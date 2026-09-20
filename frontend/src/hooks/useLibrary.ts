@@ -22,7 +22,7 @@ import {
 // Fast while a job runs, slow otherwise: the slow beat is what notices a job that
 // something else started, so a second browser tab or a curl call never leaves this
 // one showing stale counts.
-const RUNNING_POLL_MS = 1000
+const RUNNING_POLL_MS = 500
 const IDLE_POLL_MS = 5000
 
 export interface Library {

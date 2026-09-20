@@ -4,9 +4,23 @@ import type { SearchResponse } from '../services/api'
 
 interface Props {
   response: SearchResponse | null
+  busy?: boolean
 }
 
-export function SearchResults({ response }: Props) {
+export function SearchResults({ response, busy = false }: Props) {
+  if (busy && response === null) {
+    return (
+      <ul className="results" aria-busy="true">
+        {[0, 1, 2].map((index) => (
+          <li key={index} className="result skeleton">
+            <span className="skeleton-line short" />
+            <span className="skeleton-line" />
+            <span className="skeleton-line" />
+          </li>
+        ))}
+      </ul>
+    )
+  }
   if (response === null) {
     return <p className="hint">Search your indexed PDFs in Chinese, Korean, or English.</p>
   }
@@ -17,13 +31,18 @@ export function SearchResults({ response }: Props) {
     <>
       <div className="result-meta">
         <span>
-          {response.count} {response.count === 1 ? 'result' : 'results'}
+          <strong>{response.count}</strong> {response.count === 1 ? 'result' : 'results'}
         </span>
         <span>{response.took_ms} ms</span>
+        <span className="muted">for “{response.query}”</span>
       </div>
-      <ul className="results">
+      <ul className={`results${busy ? ' stale' : ''}`}>
         {response.results.map((hit) => (
-          <SearchResult key={`${hit.document_id}-${hit.chunk_index}`} hit={hit} />
+          <SearchResult
+            key={`${hit.document_id}-${hit.chunk_index}`}
+            hit={hit}
+            query={response.query}
+          />
         ))}
       </ul>
     </>

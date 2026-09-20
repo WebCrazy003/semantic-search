@@ -53,7 +53,10 @@ describe('SearchPage', () => {
     render(<SearchPage />)
     await userEvent.type(screen.getByRole('textbox', { name: /search/i }), '更换滤芯{Enter}')
 
-    await waitFor(() => expect(screen.getByText('2 results')).toBeInTheDocument())
+    // The count is emphasised, so it and the word are separate elements now.
+    await waitFor(() =>
+      expect(screen.getByText(/results/).textContent?.replace(/\s+/g, ' ')).toContain('2 results'),
+    )
     expect(screen.getByText(/87 ms/)).toBeInTheDocument()
   })
 

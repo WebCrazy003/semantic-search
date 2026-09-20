@@ -358,3 +358,70 @@ class TestConcurrency:
         status = indexer.snapshot()
         assert status.status == "idle"
         assert status.total_documents == 0
+
+
+class TestLiveProgress:
+    """The UI needs numbers that move while a run is in flight, not only at the end."""
+
+    def test_passages_are_counted_while_a_document_is_still_being_embedded(
+        self, indexer: IndexingService, corpus_dir: Path
+    ) -> None:
+        seen: list[int] = []
+
+        original = indexer._embedder.embed_documents
+
+        def spy(texts: list[str]) -> list[list[float]]:
+            seen.append(indexer.snapshot().total_chunks)
+            return original(texts)
+
+        indexer._embedder.embed_documents = spy  # type: ignore[method-assign]
+        run(indexer)
+
+        # The counter seen by the second and later batches already includes earlier ones.
+        assert seen, "the fake embedder was never called"
+        assert indexer.snapshot().total_chunks > max(seen)
+
+    def test_the_current_file_and_stage_are_reported_during_a_run(
+        self, indexer: IndexingService
+    ) -> None:
+        stages: list[tuple[str | None, str | None]] = []
+
+        original = indexer._chunker.chunk_document
+
+        def spy(document):  # type: ignore[no-untyped-def]
+            snapshot = indexer.snapshot()
+            stages.append((snapshot.current_file, snapshot.current_stage))
+            return original(document)
+
+        indexer._chunker.chunk_document = spy  # type: ignore[method-assign]
+        run(indexer)
+
+        assert any(name and stage for name, stage in stages)
+        assert all(stage == "splitting into passages" for _, stage in stages)
+
+    def test_nothing_is_left_in_progress_once_the_run_ends(
+        self, indexer: IndexingService
+    ) -> None:
+        status = run(indexer)
+        assert status.current_file is None
+        assert status.current_stage is None
+        assert status.current_file_progress == 0.0
+
+    def test_within_file_progress_reaches_the_end_of_each_document(
+        self, indexer: IndexingService
+    ) -> None:
+        # Sampled as each document is filed away, which is the moment after its last
+        # batch of passages has been written.
+        progress: list[float] = []
+
+        original = indexer._store_record
+
+        def spy(*args, **kwargs):  # type: ignore[no-untyped-def]
+            progress.append(indexer.snapshot().current_file_progress)
+            return original(*args, **kwargs)
+
+        indexer._store_record = spy  # type: ignore[method-assign]
+        run(indexer)
+
+        assert progress
+        assert max(progress) == 1.0

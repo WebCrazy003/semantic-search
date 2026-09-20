@@ -1,51 +1,67 @@
 // frontend/src/components/JobHistory.tsx
+import { usePagination } from '../hooks/usePagination'
 import type { JobSummary } from '../services/api'
+import { Pagination } from './Pagination'
+import { StatusBadge } from './StatusBadge'
 
 interface Props {
   jobs: JobSummary[]
 }
 
 export function JobHistory({ jobs }: Props) {
+  const paged = usePagination(jobs, 10)
+
   return (
     <section className="panel">
       <h2>Job history</h2>
       {jobs.length === 0 ? (
-        <p className="hint">No jobs have run yet.</p>
+        <p className="hint empty">No jobs have run yet.</p>
       ) : (
-        <table className="jobs">
-          <thead>
-            <tr>
-              <th>Started</th>
-              <th>Trigger</th>
-              <th>State</th>
-              <th>Files</th>
-              <th>Indexed</th>
-              <th>Skipped</th>
-              <th>Unsupported</th>
-              <th>Failed</th>
-              <th>Removed</th>
-              <th>Passages</th>
-              <th>Duration</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => (
-              <tr key={job.job_id} className={job.status === 'failed' ? 'row-failed' : undefined}>
-                <td>{formatTime(job.started_at)}</td>
-                <td>{job.trigger === 'upload' ? 'import' : 'scan'}</td>
-                <td>{job.status}</td>
-                <td>{job.total}</td>
-                <td>{job.indexed}</td>
-                <td>{job.skipped}</td>
-                <td>{job.unsupported}</td>
-                <td>{job.failed}</td>
-                <td>{job.deleted}</td>
-                <td>{job.chunks}</td>
-                <td>{formatDuration(job)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          <div className="table-wrap">
+            <table className="jobs">
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Trigger</th>
+                  <th>State</th>
+                  <th className="numeric">Files</th>
+                  <th className="numeric">Indexed</th>
+                  <th className="numeric">Skipped</th>
+                  <th className="numeric">Unsupported</th>
+                  <th className="numeric">Failed</th>
+                  <th className="numeric">Removed</th>
+                  <th className="numeric">Passages</th>
+                  <th className="numeric">Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.items.map((job) => (
+                  <tr key={job.job_id}>
+                    <td>{formatTime(job.started_at)}</td>
+                    <td>
+                      <span className="badge subtle">
+                        {job.trigger === 'upload' ? 'import' : 'scan'}
+                      </span>
+                    </td>
+                    <td>
+                      <StatusBadge status={job.status} pulse={job.status === 'running'} />
+                    </td>
+                    <td className="numeric">{job.total}</td>
+                    <td className="numeric">{job.indexed}</td>
+                    <td className="numeric">{job.skipped}</td>
+                    <td className="numeric">{job.unsupported}</td>
+                    <td className="numeric">{job.failed}</td>
+                    <td className="numeric">{job.deleted}</td>
+                    <td className="numeric">{job.chunks}</td>
+                    <td className="numeric">{formatDuration(job)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination paged={paged} label="jobs" />
+        </>
       )}
     </section>
   )

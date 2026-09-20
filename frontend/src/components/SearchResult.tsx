@@ -1,8 +1,32 @@
 // frontend/src/components/SearchResult.tsx
+import { useState } from 'react'
 import type { SearchHit } from '../services/api'
 
 interface Props {
   hit: SearchHit
+  query?: string
+}
+
+// A passage can be several hundred characters. Showing the whole thing buries the
+// next result, so the card opens with a snippet and expands on request.
+const SNIPPET_CHARS = 180
+const SENTENCE_ENDS = /[。！？；.!?;]/g
+
+function snippet(text: string): string {
+  if (text.length <= SNIPPET_CHARS) return text
+
+  // Prefer cutting at a sentence end near the limit; a mid-word cut reads badly in
+  // English and a mid-clause cut reads badly in Chinese.
+  const window = text.slice(0, SNIPPET_CHARS + 40)
+  let cut = -1
+  for (const match of window.matchAll(SENTENCE_ENDS)) {
+    const end = (match.index ?? 0) + 1
+    if (end >= SNIPPET_CHARS * 0.6) {
+      cut = end
+      break
+    }
+  }
+  return (cut > 0 ? text.slice(0, cut) : text.slice(0, SNIPPET_CHARS).trimEnd()) + '…'
 }
 
 function pageLabel(hit: SearchHit): string {
@@ -11,19 +35,94 @@ function pageLabel(hit: SearchHit): string {
     : `Pages ${hit.page_start} to ${hit.page_end}`
 }
 
-export function SearchResult({ hit }: Props) {
+export function SearchResult({ hit, query }: Props) {
+  const [expanded, setExpanded] = useState(false)
+  const body = withoutRepeatedHeading(hit.text, hit.heading)
+  const short = snippet(body)
+  const truncated = short !== body
+  const shown = expanded ? body : short
+
   return (
     <li className="result">
       <div className="result-head">
-        <span className="result-file">{hit.filename}</span>
+        <span className="result-file" title={hit.filepath}>
+          {hit.filename}
+        </span>
         <span className="result-page">{pageLabel(hit)}</span>
-        <span className="result-score" title="Cosine similarity">
+        <span className="result-score" title="Cosine similarity, higher is closer in meaning">
+          <span className="score-bar" aria-hidden="true">
+            <span style={{ width: `${Math.max(0, Math.min(1, hit.score)) * 100}%` }} />
+          </span>
           {hit.score.toFixed(3)}
         </span>
-        {hit.language ? <span className="result-language">{hit.language}</span> : null}
+        {hit.language ? <span className="badge subtle">{hit.language}</span> : null}
       </div>
+
       {hit.heading ? <div className="result-heading">{hit.heading}</div> : null}
-      <p className="result-text">{hit.text}</p>
+
+      <p className={`result-text${expanded ? ' expanded' : ''}`}>{highlight(shown, query)}</p>
+
+      {truncated ? (
+        <button
+          type="button"
+          className="link-button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? 'Show less' : `Show more (${body.length} characters)`}
+        </button>
+      ) : null}
     </li>
   )
+}
+
+/**
+ * The chunker repeats a section heading at the top of each of its passages, which is
+ * right for retrieval and redundant on screen next to the heading line.
+ */
+function withoutRepeatedHeading(text: string, heading?: string | null): string {
+  if (!heading) return text
+  const trimmed = text.trimStart()
+  return trimmed.startsWith(heading) ? trimmed.slice(heading.length).trimStart() : text
+}
+
+// Highlighting every shared word turns a passage yellow and tells the reader nothing,
+// so short and very common English words are left alone. CJK has no word spaces, so a
+// two-character term there is already specific.
+const STOPWORDS = new Set([
+  'about', 'after', 'again', 'against', 'because', 'been', 'before', 'being', 'between',
+  'both', 'does', 'doing', 'down', 'during', 'each', 'from', 'have', 'having', 'here',
+  'how', 'into', 'itself', 'just', 'more', 'most', 'need', 'only', 'other', 'over',
+  'same', 'should', 'some', 'such', 'than', 'that', 'them', 'then', 'there', 'these',
+  'they', 'this', 'through', 'under', 'until', 'very', 'what', 'when', 'where', 'which',
+  'while', 'will', 'with', 'work', 'would', 'your',
+])
+
+const CJK = /[\u4e00-\u9fff\u3400-\u4dbf\uac00-\ud7af\u3040-\u30ff]/
+
+function isWorthMarking(term: string): boolean {
+  if (CJK.test(term)) return term.length >= 2
+  return term.length >= 4 && !STOPWORDS.has(term.toLowerCase())
+}
+
+/** Mark any part of the query that appears verbatim. Semantic hits often share none. */
+function highlight(text: string, query?: string) {
+  const terms = (query ?? '')
+    .split(/[\s,，。、]+/)
+    .map((term) => term.trim())
+    .filter(isWorthMarking)
+  if (terms.length === 0) return text
+
+  // split() with one capture group puts the matches at the odd indices, so no second
+  // test against the (stateful, global) pattern is needed.
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi')
+  return text
+    .split(pattern)
+    .map((part, index) =>
+      index % 2 === 1 ? <mark key={index}>{part}</mark> : <span key={index}>{part}</span>,
+    )
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }

@@ -45,6 +45,8 @@ class _State:
         self.trigger: str = "scan"
         self.directory: str | None = None
         self.current_file: str | None = None
+        self.current_stage: str | None = None
+        self.current_file_progress: float = 0.0
         self.processed = 0
         self.total = 0
         self.indexed = 0
@@ -119,6 +121,8 @@ class IndexingService:
                 trigger=state.trigger,
                 directory=state.directory,
                 current_file=state.current_file,
+                current_stage=state.current_stage,
+                current_file_progress=round(state.current_file_progress, 3),
                 processed_documents=state.processed,
                 total_documents=state.total,
                 indexed_documents=state.indexed,
@@ -161,6 +165,8 @@ class IndexingService:
         for path in paths:
             with self._state_lock:
                 self._state.current_file = path.name
+                self._state.current_stage = "reading"
+                self._state.current_file_progress = 0.0
             try:
                 self._process(path, seen, force)
             except Exception as exc:  # last line of defence; the run continues
@@ -179,6 +185,7 @@ class IndexingService:
 
         with self._state_lock:
             self._state.current_file = None
+            self._state.current_stage = "removing deleted files"
         self._sweep_deleted(set(seen))
         self._finish("completed")
 
@@ -211,6 +218,7 @@ class IndexingService:
             logger.debug("skipping unchanged %s", path.name)
             return
 
+        self._stage("extracting")
         try:
             document = self._pdf.extract(path, document_id=document_id, file_hash=file_hash)
         except PdfUnsupportedError as exc:
@@ -225,6 +233,7 @@ class IndexingService:
             self._bump("failed")
             return
 
+        self._stage("splitting into passages")
         chunks = self._chunker.chunk_document(document)
         if not chunks:
             reason = PdfUnsupportedError(f"{path.name} produced no passages")
@@ -235,15 +244,21 @@ class IndexingService:
         # Always clear first: a re-index that yields fewer chunks must not leave the
         # previous run's surplus points behind.
         self._qdrant.delete_document(document_id)
+        self._stage("embedding", 0.0)
         for start in range(0, len(chunks), _EMBED_SLICE):
             batch = chunks[start : start + _EMBED_SLICE]
             vectors = self._embedder.embed_documents([chunk.text for chunk in batch])
             self._qdrant.upsert_chunks(batch, vectors, document.meta)
+            # Counted here rather than after the loop, so a long document's passage
+            # count climbs while it is being embedded instead of jumping at the end.
+            with self._state_lock:
+                self._state.chunks += len(batch)
+                self._state.current_file_progress = min(
+                    1.0, (start + len(batch)) / max(1, len(chunks))
+                )
 
         self._store_record(path, document_id, file_hash, document, len(chunks), "indexed", None)
         self._bump("indexed")
-        with self._state_lock:
-            self._state.chunks += len(chunks)
         logger.info(
             "indexed %s: pages=%d chunks=%d", path.name, len(document.pages), len(chunks)
         )
@@ -324,6 +339,12 @@ class IndexingService:
                     )
                 )
 
+    def _stage(self, stage: str, progress: float | None = None) -> None:
+        with self._state_lock:
+            self._state.current_stage = stage
+            if progress is not None:
+                self._state.current_file_progress = progress
+
     def _bump(self, counter: str) -> None:
         with self._state_lock:
             setattr(self._state, counter, getattr(self._state, counter) + 1)
@@ -332,6 +353,8 @@ class IndexingService:
         with self._state_lock:
             self._state.status = status
             self._state.current_file = None
+            self._state.current_stage = None
+            self._state.current_file_progress = 0.0
             self._state.finished_at = _now()
             state = self._state
         self._persist_job()

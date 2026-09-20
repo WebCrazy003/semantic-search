@@ -60,7 +60,7 @@ export function SearchPage() {
         </label>
       </div>
       {error ? <p role="alert" className="error">{error}</p> : null}
-      <SearchResults response={response} />
+      <SearchResults response={response} busy={busy} />
     </section>
   )
 }

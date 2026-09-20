@@ -36,6 +36,8 @@ export interface IndexStatus {
   trigger: string
   directory: string | null
   current_file: string | null
+  current_stage: string | null
+  current_file_progress: number
   processed_documents: number
   total_documents: number
   indexed_documents: number

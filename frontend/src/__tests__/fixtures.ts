@@ -12,6 +12,8 @@ export function makeStatus(overrides: Partial<IndexStatus> = {}): IndexStatus {
     trigger: 'scan',
     directory: null,
     current_file: null,
+    current_stage: null,
+    current_file_progress: 0,
     processed_documents: 0,
     total_documents: 0,
     indexed_documents: 0,

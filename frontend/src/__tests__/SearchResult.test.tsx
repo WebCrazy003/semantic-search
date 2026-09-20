@@ -1,5 +1,6 @@
 // frontend/src/__tests__/SearchResult.test.tsx
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { SearchResult } from '../components/SearchResult'
 import type { SearchHit } from '../services/api'
@@ -39,5 +40,95 @@ describe('SearchResult', () => {
   it('omits the heading line when there is no heading', () => {
     render(<SearchResult hit={{ ...hit, heading: null }} />)
     expect(screen.queryByText('第一章 安全注意事项')).not.toBeInTheDocument()
+  })
+})
+
+describe('long passages', () => {
+  const long = '第一句。'.repeat(60)
+
+  function hitWith(text: string): SearchHit {
+    return {
+      score: 0.61,
+      document_id: 'a',
+      filename: 'manual_zh.pdf',
+      filepath: '/documents/manual_zh.pdf',
+      page_start: 3,
+      page_end: 3,
+      chunk_index: 1,
+      heading: null,
+      language: 'zh',
+      text,
+    }
+  }
+
+  it('shows a snippet rather than the whole passage', () => {
+    render(<SearchResult hit={hitWith(long)} />)
+    const shown = screen.getByText(/第一句/).textContent ?? ''
+    expect(shown.length).toBeLessThan(long.length)
+    expect(shown.endsWith('…')).toBe(true)
+  })
+
+  it('offers to show the rest, with its length', () => {
+    render(<SearchResult hit={hitWith(long)} />)
+    expect(screen.getByRole('button', { name: /show more \(240 characters\)/i })).toBeInTheDocument()
+  })
+
+  it('expands to the full passage and collapses again', async () => {
+    render(<SearchResult hit={hitWith(long)} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /show more/i }))
+    expect(screen.getByText(long)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /show less/i }))
+    expect(screen.queryByText(long)).not.toBeInTheDocument()
+  })
+
+  it('leaves a short passage alone', () => {
+    render(<SearchResult hit={hitWith('短句。')} />)
+    expect(screen.getByText('短句。')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /show more/i })).not.toBeInTheDocument()
+  })
+
+  it('cuts at a sentence end, not mid-sentence', () => {
+    render(<SearchResult hit={hitWith(long)} />)
+    const shown = screen.getByText(/第一句/).textContent ?? ''
+    expect(shown.replace('…', '').endsWith('。')).toBe(true)
+  })
+
+  it('marks words from the query that appear verbatim', () => {
+    render(<SearchResult hit={hitWith('版本控制用来跟踪源代码的改动。')} query="版本控制" />)
+    expect(screen.getByText('版本控制').tagName).toBe('MARK')
+  })
+})
+
+describe('readable passages', () => {
+  function hitWith(text: string, heading: string | null = null): SearchHit {
+    return { ...hit, text, heading }
+  }
+
+  it('does not repeat the heading inside the passage', () => {
+    render(<SearchResult hit={hitWith('第一章 安全\n必须先关闭主电源。', '第一章 安全')} />)
+    expect(screen.getByText(/必须先关闭主电源/).textContent).toBe('必须先关闭主电源。')
+  })
+
+  it('keeps a passage that merely starts with similar words', () => {
+    render(<SearchResult hit={hitWith('安全第一，必须关闭电源。', '第一章 安全')} />)
+    expect(screen.getByText(/安全第一/)).toBeInTheDocument()
+  })
+
+  it('does not highlight common English words', () => {
+    render(
+      <SearchResult
+        hit={hitWith('React does not discard what has already been rendered.')}
+        query="why does React work"
+      />,
+    )
+    expect(screen.getByText('React').tagName).toBe('MARK')
+    expect(screen.queryByText('does')).toBeNull()
+  })
+
+  it('still highlights short Chinese terms', () => {
+    render(<SearchResult hit={hitWith('重构可以改善代码结构。')} query="重构 代码" />)
+    expect(screen.getByText('重构').tagName).toBe('MARK')
   })
 })

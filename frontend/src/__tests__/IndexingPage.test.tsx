@@ -145,7 +145,7 @@ describe('job progress', () => {
   it('cannot start a second run while one is in progress', () => {
     const library = makeLibrary({ status: makeStatus({ status: 'running' }) })
     render(<IndexingPage library={library} />)
-    expect(screen.getByRole('button', { name: /indexing\.\.\./i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^indexing…$/i })).toBeDisabled()
   })
 })
 
@@ -216,5 +216,53 @@ describe('clearing the index', () => {
     const library = makeLibrary({ status: makeStatus({ status: 'running' }) })
     render(<IndexingPage library={library} />)
     expect(screen.getByRole('button', { name: /clear all indexing/i })).toBeDisabled()
+  })
+})
+
+describe('live progress detail', () => {
+  it('counts a part-finished file towards the bar', () => {
+    const library = makeLibrary({
+      status: makeStatus({
+        status: 'running',
+        total_documents: 10,
+        processed_documents: 4,
+        current_file_progress: 0.5,
+      }),
+    })
+    render(<IndexingPage library={library} />)
+    // 4 whole files plus half of the fifth, out of ten.
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '45')
+  })
+
+  it('names the stage the current file is in', () => {
+    const library = makeLibrary({
+      status: makeStatus({
+        status: 'running',
+        total_documents: 3,
+        processed_documents: 1,
+        current_file: '05_软件测试.pdf',
+        current_stage: 'embedding',
+      }),
+    })
+    render(<IndexingPage library={library} />)
+    expect(screen.getByText(/embedding/)).toBeInTheDocument()
+  })
+
+  it('shows an indeterminate bar until the file count is known', () => {
+    const library = makeLibrary({
+      status: makeStatus({ status: 'running', total_documents: 0, processed_documents: 0 }),
+    })
+    render(<IndexingPage library={library} />)
+    expect(screen.getByRole('progressbar').className).toContain('indeterminate')
+  })
+
+  it('shows the passage count as it climbs', () => {
+    const library = makeLibrary({
+      status: makeStatus({ status: 'running', total_chunks: 137, total_documents: 10 }),
+    })
+    render(<IndexingPage library={library} />)
+    const passages = screen.getByText('Passages').closest('div')!
+    expect(passages.className).toContain('live')
+    expect(passages).toHaveTextContent('137')
   })
 })

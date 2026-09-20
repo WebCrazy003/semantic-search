@@ -61,6 +61,8 @@ class IndexStatusResponse(BaseModel):
     trigger: str = "scan"
     directory: str | None = None
     current_file: str | None = None
+    current_stage: str | None = None
+    current_file_progress: float = 0.0
     processed_documents: int = 0
     total_documents: int = 0
     indexed_documents: int = 0

@@ -1,5 +1,7 @@
 // frontend/src/components/JobProgress.tsx
 import type { IndexStatus } from '../services/api'
+import { CountUp } from './CountUp'
+import { StatusBadge } from './StatusBadge'
 
 interface Props {
   status: IndexStatus | null
@@ -11,16 +13,34 @@ export function JobProgress({ status, busy, onIndex }: Props) {
   const running = status?.status === 'running'
   const total = status?.total_documents ?? 0
   const processed = status?.processed_documents ?? 0
-  // Before discovery finishes total is 0, so the bar would read 100%; show 0 instead.
-  const percent = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0
+  const withinFile = status?.current_file_progress ?? 0
+
+  // Counting the part-finished file makes the bar move while one long document is
+  // being embedded, instead of standing still between whole files.
+  const fraction = total > 0 ? Math.min(1, (processed + withinFile) / total) : 0
+  const percent = Math.round(fraction * 100)
+  // Before discovery finishes there is no total, so show a moving indeterminate bar.
+  const indeterminate = running && total === 0
 
   return (
     <section className="panel">
-      <h2>Indexing job</h2>
+      <div className="panel-head">
+        <h2>Indexing job</h2>
+        {status && status.status !== 'idle' ? (
+          <StatusBadge status={status.status} pulse={running} />
+        ) : null}
+      </div>
 
       <div className="index-actions">
-        <button type="button" onClick={onIndex} disabled={running || busy}>
-          {running ? 'Indexing...' : 'Index documents folder'}
+        <button type="button" className="primary" onClick={onIndex} disabled={running || busy}>
+          {running ? (
+            <>
+              <span className="spinner" aria-hidden="true" />
+              Indexing…
+            </>
+          ) : (
+            'Index documents folder'
+          )}
         </button>
         {status?.directory ? <code className="index-dir">{status.directory}</code> : null}
       </div>
@@ -29,7 +49,7 @@ export function JobProgress({ status, busy, onIndex }: Props) {
         <>
           <div className="progress-line">
             <div
-              className="progress"
+              className={`progress${indeterminate ? ' indeterminate' : ''}`}
               role="progressbar"
               aria-label="Indexing progress"
               aria-valuemin={0}
@@ -38,50 +58,45 @@ export function JobProgress({ status, busy, onIndex }: Props) {
             >
               <span style={{ width: `${running ? percent : 100}%` }} />
             </div>
-            <span className="progress-text">
-              {running
-                ? `${processed} of ${total} files${status.current_file ? ` — ${status.current_file}` : ''}`
-                : `${status.status} — ${processed} of ${total} files`}
-            </span>
+            <span className="progress-percent">{running ? `${percent}%` : 'done'}</span>
           </div>
 
+          <p className="progress-text" aria-live="polite">
+            {running ? (
+              <>
+                <strong>
+                  {processed} of {total || '?'} files
+                </strong>
+                {status.current_file ? (
+                  <>
+                    {' — '}
+                    <span className="current-file">{status.current_file}</span>
+                  </>
+                ) : null}
+                {status.current_stage ? <em> ({status.current_stage})</em> : null}
+              </>
+            ) : (
+              <>
+                {status.status} — {processed} of {total} files
+              </>
+            )}
+          </p>
+
           <dl className="index-counters">
-            <div>
-              <dt>State</dt>
-              <dd>{status.status}</dd>
-            </div>
+            <Counter label="Passages" value={status.total_chunks} highlight={running} />
+            <Counter label="Indexed" value={status.indexed_documents} />
+            <Counter label="Skipped" value={status.skipped_documents} />
+            <Counter label="Unsupported" value={status.unsupported_documents} />
+            <Counter label="Failed" value={status.failed_documents} tone={status.failed_documents ? 'bad' : undefined} />
+            <Counter label="Removed" value={status.deleted_documents} />
             <div>
               <dt>Started by</dt>
               <dd>{status.trigger === 'upload' ? 'import' : 'folder scan'}</dd>
             </div>
-            <div>
-              <dt>Indexed</dt>
-              <dd>{status.indexed_documents}</dd>
-            </div>
-            <div>
-              <dt>Passages</dt>
-              <dd>{status.total_chunks}</dd>
-            </div>
-            <div>
-              <dt>Skipped</dt>
-              <dd>{status.skipped_documents}</dd>
-            </div>
-            <div>
-              <dt>Unsupported</dt>
-              <dd>{status.unsupported_documents}</dd>
-            </div>
-            <div>
-              <dt>Failed</dt>
-              <dd>{status.failed_documents}</dd>
-            </div>
-            <div>
-              <dt>Removed</dt>
-              <dd>{status.deleted_documents}</dd>
-            </div>
           </dl>
         </>
       ) : (
-        <p className="hint">No job has run in this session yet.</p>
+        <p className="hint empty">No job has run in this session yet.</p>
       )}
 
       {status && status.failures.length > 0 ? (
@@ -97,5 +112,26 @@ export function JobProgress({ status, busy, onIndex }: Props) {
         </ul>
       ) : null}
     </section>
+  )
+}
+
+function Counter({
+  label,
+  value,
+  highlight = false,
+  tone,
+}: {
+  label: string
+  value: number
+  highlight?: boolean
+  tone?: string
+}) {
+  return (
+    <div className={`counter${highlight ? ' live' : ''}${tone ? ` ${tone}` : ''}`}>
+      <dt>{label}</dt>
+      <dd>
+        <CountUp value={value} />
+      </dd>
+    </div>
   )
 }
