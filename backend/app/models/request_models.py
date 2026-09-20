@@ -30,3 +30,7 @@ class IndexRequest(BaseModel):
     trigger: Literal["scan", "upload"] = Field(
         default="scan", description="Labels the run in the job history"
     )
+
+
+class AddFolderRequest(BaseModel):
+    path: str = Field(min_length=1, description="Absolute path of a folder to index in place")

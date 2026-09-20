@@ -27,7 +27,7 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
 
   return (
     <section className="panel">
-      <h2>Import PDFs</h2>
+      <h2>Import single PDFs</h2>
 
       <div className="import-row">
         <input
@@ -57,9 +57,9 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
         <p className="hint">A job is running. Importing is available again when it finishes.</p>
       ) : (
         <p className="hint">
-          Importing copies the files into the documents folder, then runs a job over the whole
-          folder. Files already indexed and unchanged are checked and left alone, so only the new
-          ones cost any time.
+          Importing <strong>copies</strong> the files into the documents folder and then runs a
+          job. Use it for one-off files; for a folder you already keep PDFs in, add it above
+          instead and nothing is copied.
         </p>
       )}
 

@@ -90,6 +90,21 @@ class IndexingService:
     def resolve_directory(self, directory: Path | str | None) -> Path:
         return Path(directory) if directory else self._default_directory
 
+    def roots(self, directory: Path | str | None = None) -> list[Path]:
+        """Every folder a run covers: the one asked for, or the whole library.
+
+        The library is the default documents folder plus the folders registered by
+        the user, whose PDFs stay where they are and are never copied.
+        """
+        if directory:
+            return [Path(directory)]
+        found = [self._default_directory]
+        for record in self._manifest.folders():
+            path = Path(record.path)
+            if path not in found:
+                found.append(path)
+        return found
+
     def start(
         self, directory: Path | str | None, force: bool = False, trigger: str = "scan"
     ) -> bool:
@@ -146,20 +161,28 @@ class IndexingService:
             self._run_lock.release()
 
     def _run(self, directory: Path, force: bool) -> None:
-        if not directory.is_dir():
+        roots = self.roots(directory if directory != self._default_directory else None)
+        readable = [root for root in roots if root.is_dir()]
+        for missing in [root for root in roots if not root.is_dir()]:
+            # A registered folder on an unplugged drive must not abort the run.
+            logger.warning("folder is not readable, skipping: %s", missing)
             self._record_failure(
-                filename=directory.name or str(directory),
-                filepath=str(directory),
+                filename=missing.name or str(missing),
+                filepath=str(missing),
                 error_type="DirectoryNotFound",
-                error_message=f"directory does not exist: {directory}",
+                error_message=f"folder is not readable: {missing}",
             )
+
+        if not readable:
             self._finish("failed")
             return
 
-        paths = self._discover(directory)
+        paths: list[Path] = []
+        for root in readable:
+            paths.extend(self._discover(root))
         with self._state_lock:
             self._state.total = len(paths)
-        logger.info("discovered %d PDF files under %s", len(paths), directory)
+        logger.info("discovered %d PDF files under %d folder(s)", len(paths), len(readable))
 
         seen: dict[str, Path] = {}
         for path in paths:

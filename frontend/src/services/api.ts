@@ -92,6 +92,22 @@ export interface JobSummary {
   failures: { filename: string; error_type: string; error_message: string }[]
 }
 
+export interface FolderSummary {
+  path: string
+  added_at: string
+  exists: boolean
+  readable: boolean
+  pdf_count: number
+  indexed_documents: number
+  is_default: boolean
+}
+
+export interface RemovedFolder {
+  path: string
+  documents_unindexed: number
+  files_kept: boolean
+}
+
 export interface RejectedUpload {
   filename: string
   reason: string
@@ -218,4 +234,20 @@ export function clearIndex(): Promise<ClearResult> {
 export function documentFileUrl(documentId: string, page?: number): string {
   const base = `/api/documents/${documentId}/file`
   return page && page > 0 ? `${base}#page=${page}` : base
+}
+
+export function getFolders(): Promise<FolderSummary[]> {
+  return call<FolderSummary[]>('/api/folders')
+}
+
+export function addFolder(path: string): Promise<FolderSummary> {
+  return call<FolderSummary>('/api/folders', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ path }),
+  })
+}
+
+export function removeFolder(path: string): Promise<RemovedFolder> {
+  return call<RemovedFolder>(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
 }

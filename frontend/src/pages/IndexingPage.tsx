@@ -1,5 +1,6 @@
 // frontend/src/pages/IndexingPage.tsx
 import { useState } from 'react'
+import { FolderPanel } from '../components/FolderPanel'
 import { ImportPanel } from '../components/ImportPanel'
 import { JobHistory } from '../components/JobHistory'
 import { JobProgress } from '../components/JobProgress'
@@ -20,6 +21,14 @@ export function IndexingPage({ library }: Props) {
           {library.error}
         </p>
       ) : null}
+
+      <FolderPanel
+        folders={library.folders}
+        busy={library.busy}
+        running={running}
+        onAdd={library.addLibraryFolder}
+        onRemove={(path) => void library.removeLibraryFolder(path)}
+      />
 
       <ImportPanel
         busy={library.busy}

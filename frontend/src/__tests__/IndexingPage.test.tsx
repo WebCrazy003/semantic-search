@@ -303,8 +303,9 @@ describe('what the file count means', () => {
     expect(screen.getByText('Unchanged').closest('div')).toHaveTextContent('20')
   })
 
-  it('explains up front that importing scans the whole folder', () => {
+  it('explains that importing copies, and that a folder does not', () => {
     render(<IndexingPage library={makeLibrary()} />)
-    expect(screen.getByText(/runs a job over the whole folder/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/nothing is copied/i).length).toBeGreaterThan(0)
+    expect(screen.getByText(/for one-off files/i)).toBeInTheDocument()
   })
 })

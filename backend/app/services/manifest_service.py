@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS index_jobs (
     failures      TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_started ON index_jobs(started_at DESC);
+
+CREATE TABLE IF NOT EXISTS library_folders (
+    path     TEXT PRIMARY KEY,
+    added_at TEXT NOT NULL
+);
 """
 
 _JOB_COLUMNS = (
@@ -119,6 +124,14 @@ class DocumentRecord:
     def known_paths(self) -> list[str]:
         """Every place this exact content has been seen, primary path first."""
         return [self.filepath, *self.alt_filepaths]
+
+
+@dataclass(frozen=True)
+class FolderRecord:
+    """A folder the user asked to index in place. Its PDFs are never copied."""
+
+    path: str
+    added_at: datetime
 
 
 @dataclass
@@ -278,6 +291,34 @@ class ManifestService:
                 (datetime.now(tz=UTC).isoformat(),),
             )
         return int(cursor.rowcount or 0)
+
+    # ---------------------------------------------------------- folders
+
+    def add_folder(self, path: Path, added_at: datetime | None = None) -> FolderRecord:
+        record = FolderRecord(path=str(path), added_at=added_at or datetime.now(tz=UTC))
+        connection = self._connect()
+        with connection:
+            connection.execute(
+                "INSERT INTO library_folders (path, added_at) VALUES (?, ?) "
+                "ON CONFLICT(path) DO NOTHING",
+                (record.path, record.added_at.isoformat()),
+            )
+        return record
+
+    def remove_folder(self, path: Path | str) -> bool:
+        connection = self._connect()
+        with connection:
+            cursor = connection.execute(
+                "DELETE FROM library_folders WHERE path = ?", (str(path),)
+            )
+        return bool(cursor.rowcount)
+
+    def folders(self) -> list[FolderRecord]:
+        rows = self._connect().execute("SELECT * FROM library_folders ORDER BY path").fetchall()
+        return [
+            FolderRecord(path=row["path"], added_at=datetime.fromisoformat(row["added_at"]))
+            for row in rows
+        ]
 
     # ------------------------------------------------------------ bulk delete
 

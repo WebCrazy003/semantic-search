@@ -125,6 +125,22 @@ class UploadResponse(BaseModel):
     directory: str
 
 
+class FolderSummary(BaseModel):
+    path: str
+    added_at: datetime
+    exists: bool
+    readable: bool
+    pdf_count: int = 0
+    indexed_documents: int = 0
+    is_default: bool = False
+
+
+class RemovedFolderResponse(BaseModel):
+    path: str
+    documents_unindexed: int
+    files_kept: bool = True
+
+
 class RemovedDocumentResponse(BaseModel):
     document_id: str
     filename: str

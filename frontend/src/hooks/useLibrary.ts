@@ -5,15 +5,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  addFolder,
   clearIndex,
   getDocuments,
+  getFolders,
   getIndexStatus,
   getJobs,
   removeDocument,
+  removeFolder,
   startIndexing,
   uploadDocuments,
   type ClearResult,
   type DocumentSummary,
+  type FolderSummary,
   type IndexStatus,
   type JobSummary,
   type UploadResult,
@@ -27,6 +31,7 @@ const IDLE_POLL_MS = 5000
 
 export interface Library {
   documents: DocumentSummary[]
+  folders: FolderSummary[]
   status: IndexStatus | null
   jobs: JobSummary[]
   error: string | null
@@ -37,6 +42,8 @@ export interface Library {
   runIndexing: (force?: boolean) => Promise<void>
   importFiles: (files: File[]) => Promise<void>
   remove: (documentId: string) => Promise<void>
+  addLibraryFolder: (path: string) => Promise<boolean>
+  removeLibraryFolder: (path: string) => Promise<void>
   clearAll: () => Promise<void>
   dismissError: () => void
 }
@@ -47,6 +54,7 @@ function message(caught: unknown, fallback: string): string {
 
 export function useLibrary(): Library {
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
+  const [folders, setFolders] = useState<FolderSummary[]>([])
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -57,14 +65,16 @@ export function useLibrary(): Library {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextStatus, nextDocuments, nextJobs] = await Promise.all([
+      const [nextStatus, nextDocuments, nextJobs, nextFolders] = await Promise.all([
         getIndexStatus(),
         getDocuments(),
         getJobs(),
+        getFolders(),
       ])
       setStatus(nextStatus)
       setDocuments(nextDocuments)
       setJobs(nextJobs)
+      setFolders(nextFolders)
       setError(null)
     } catch (caught) {
       setError(message(caught, 'Could not reach the backend'))
@@ -143,6 +153,44 @@ export function useLibrary(): Library {
     [refresh],
   )
 
+  const addLibraryFolder = useCallback(
+    async (path: string) => {
+      const trimmed = path.trim()
+      if (!trimmed) return false
+      setBusy(true)
+      try {
+        await addFolder(trimmed)
+        await refresh()
+        // Registering only records the folder; its PDFs become searchable when a job
+        // has read them, so one starts here.
+        await startIndexing({})
+        await refresh()
+        return true
+      } catch (caught) {
+        setError(message(caught, 'Could not add that folder'))
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [refresh],
+  )
+
+  const removeLibraryFolder = useCallback(
+    async (path: string) => {
+      setBusy(true)
+      try {
+        await removeFolder(path)
+        await refresh()
+      } catch (caught) {
+        setError(message(caught, 'Could not remove that folder'))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [refresh],
+  )
+
   const clearAll = useCallback(async () => {
     setBusy(true)
     setLastUpload(null)
@@ -160,6 +208,7 @@ export function useLibrary(): Library {
 
   return {
     documents,
+    folders,
     status,
     jobs,
     error,
@@ -170,6 +219,8 @@ export function useLibrary(): Library {
     runIndexing,
     importFiles,
     remove,
+    addLibraryFolder,
+    removeLibraryFolder,
     clearAll,
     dismissError,
   }

@@ -122,10 +122,14 @@ def get_document_file(
     if record is None:
         raise HTTPException(status_code=404, detail="No such document")
 
-    root = container.settings.pdf_directory.resolve()
+    # The allow-list is the library: the documents folder plus every folder the user
+    # registered. A manifest row on its own is not enough to read a file.
+    roots = [container.settings.pdf_directory.resolve()]
+    roots.extend(Path(folder.path).resolve() for folder in container.manifest.folders())
+
     for candidate in record.known_paths:
         path = Path(candidate).resolve()
-        if path.is_relative_to(root) and path.is_file():
+        if any(path.is_relative_to(root) for root in roots) and path.is_file():
             return FileResponse(
                 path,
                 media_type="application/pdf",
@@ -135,7 +139,7 @@ def get_document_file(
 
     raise HTTPException(
         status_code=404,
-        detail=f"{record.filename} is no longer in the documents folder",
+        detail=f"{record.filename} is no longer in any folder in the library",
     )
 
 

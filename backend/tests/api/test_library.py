@@ -298,7 +298,7 @@ class TestOpeningTheSourceFile:
 
         response = client.get(f"/api/documents/{document['document_id']}/file")
         assert response.status_code == 404
-        assert "no longer in the documents folder" in response.json()["detail"]
+        assert "no longer in any folder in the library" in response.json()["detail"]
 
     def test_a_record_pointing_outside_the_folder_is_refused(
         self, client: TestClient, container, tmp_path

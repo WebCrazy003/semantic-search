@@ -4,12 +4,13 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import * as api from '../services/api'
-import { makeDocument, makeJob, makeStatus } from './fixtures'
+import { makeDocument, makeFolder, makeJob, makeStatus } from './fixtures'
 
 beforeEach(() => {
   vi.spyOn(api, 'getDocuments').mockResolvedValue([makeDocument()])
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([makeJob()])
+  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
 })
 
 afterEach(() => {
@@ -36,7 +37,8 @@ describe('App', () => {
   it('switches to the indexing tab', async () => {
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'Indexing' }))
-    expect(await screen.findByRole('heading', { name: /import pdfs/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /^folders$/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /import single pdfs/i })).toBeInTheDocument()
   })
 
   it('loads the library once for both tabs that need it', async () => {

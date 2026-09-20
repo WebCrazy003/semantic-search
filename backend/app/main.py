@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import documents, health, indexing, search
+from app.api import documents, folders, health, indexing, search
 from app.config import Settings, get_settings
 from app.deps import Container, build_container
 from app.logging_config import configure_logging, get_logger
@@ -63,6 +63,7 @@ def create_app(container: Container | None = None, settings: Settings | None = N
     application.include_router(search.router, prefix="/api")
     application.include_router(indexing.router, prefix="/api")
     application.include_router(documents.router, prefix="/api")
+    application.include_router(folders.router, prefix="/api")
     return application
 
 
