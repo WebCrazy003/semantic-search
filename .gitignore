@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local data and models: never commit these
+documents/*
+!documents/.gitkeep
+models/*
+!models/.gitkeep
+qdrant_storage/*
+!qdrant_storage/.gitkeep
+data/*
+!data/.gitkeep
+
+# Secrets and local config
+.env
+
+# OS
+.DS_Store
