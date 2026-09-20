@@ -1,0 +1,54 @@
+from pathlib import Path
+
+import pytest
+
+from app.config import REPO_ROOT, Settings
+
+
+def test_defaults_match_the_specification() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.qdrant_collection == "pdf_passages"
+    assert settings.vector_size == 1024
+    assert settings.default_top_k == 10
+    assert settings.chunk_target_tokens == 300
+    assert settings.chunk_max_tokens == 450
+    assert settings.chunk_min_tokens == 80
+    assert settings.chunk_overlap_tokens == 50
+    assert settings.chunk_preserve_headings is True
+    assert settings.chunk_repeat_heading is True
+    assert settings.chunk_allow_cross_page is False
+    assert settings.api_host == "127.0.0.1"
+
+
+def test_relative_paths_resolve_against_the_repository_root() -> None:
+    settings = Settings(_env_file=None, pdf_directory="./documents")
+    assert settings.pdf_directory == REPO_ROOT / "documents"
+    assert settings.pdf_directory.is_absolute()
+
+
+def test_absolute_paths_are_left_alone(tmp_path: Path) -> None:
+    settings = Settings(_env_file=None, pdf_directory=str(tmp_path))
+    assert settings.pdf_directory == tmp_path
+
+
+def test_env_vars_override_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEFAULT_TOP_K", "25")
+    monkeypatch.setenv("CHUNK_ALLOW_CROSS_PAGE", "true")
+    settings = Settings(_env_file=None)
+    assert settings.default_top_k == 25
+    assert settings.chunk_allow_cross_page is True
+
+
+def test_max_tokens_below_target_is_rejected() -> None:
+    with pytest.raises(ValueError, match="chunk_max_tokens"):
+        Settings(_env_file=None, chunk_target_tokens=300, chunk_max_tokens=200)
+
+
+def test_overlap_not_smaller_than_target_is_rejected() -> None:
+    with pytest.raises(ValueError, match="chunk_overlap_tokens"):
+        Settings(_env_file=None, chunk_target_tokens=300, chunk_overlap_tokens=300)
+
+
+def test_cors_origins_parse_from_a_comma_separated_string() -> None:
+    settings = Settings(_env_file=None, cors_origins="http://a.test,http://b.test")
+    assert settings.cors_origin_list == ["http://a.test", "http://b.test"]
