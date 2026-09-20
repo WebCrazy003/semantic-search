@@ -89,6 +89,23 @@ The fixture pages are short enough that all three presets produce nearly the sam
 passages, so this corpus cannot separate them. The default stays at preset B. Re-run
 the comparison against your own documents before changing the chunk settings.
 
+## Serving the UI on the local network
+
+By default everything binds to `127.0.0.1` and nothing is reachable from the network.
+To open the UI from a phone or another machine on the same network:
+
+    npm --prefix frontend run dev:lan
+
+The UI is then at `http://<this-machine-ip>:5173`. Only the Vite dev server listens on
+the network; the backend and Qdrant stay on `127.0.0.1`, and API calls from the other
+device are proxied through Vite, so nothing else is exposed.
+
+**There is no authentication.** Anyone who can reach that address can search every
+indexed document, read the passages, open the PDFs, remove documents and clear the
+index. Use this on a network you trust, and go back to `npm --prefix frontend run dev`
+when you are finished. macOS may ask once whether to allow incoming connections for
+Node; that prompt is this server.
+
 ## Offline guarantees
 
 - `ALLOW_MODEL_DOWNLOAD=false` sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`,
