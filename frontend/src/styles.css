@@ -1,0 +1,244 @@
+/* frontend/src/styles.css */
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #666666;
+  --line: #e2e2e2;
+  --accent: #1f5fbf;
+  --error: #b3261e;
+  /* PingFang and Apple SD Gothic Neo carry Chinese and Korean on macOS. */
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Apple SD Gothic Neo",
+    "Noto Sans CJK", "Microsoft YaHei", "Malgun Gothic", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  line-height: 1.6;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+header h1 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+header nav {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  margin-bottom: 20px;
+}
+
+header nav button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font: inherit;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+header nav button.active {
+  color: var(--fg);
+  border-color: var(--line);
+  background: #f6f6f6;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.search-bar {
+  display: flex;
+  gap: 8px;
+  flex: 1 1 320px;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 10px 12px;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.search-bar button,
+.index-actions button {
+  padding: 10px 18px;
+  font: inherit;
+  color: #ffffff;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.search-bar button:disabled,
+.index-actions button:disabled {
+  background: var(--muted);
+  cursor: default;
+}
+
+.top-k {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.top-k select {
+  padding: 8px;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.result-meta {
+  display: flex;
+  gap: 16px;
+  margin: 20px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.result {
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+
+.result-head {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.result-file {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.result-score {
+  font-variant-numeric: tabular-nums;
+}
+
+.result-heading {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.result-text {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  /* CJK text has no spaces to break at, so allow breaking anywhere. */
+  word-break: break-word;
+}
+
+.documents {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 14px;
+}
+
+.documents th,
+.documents td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.documents th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.index-counters {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 16px 0 0;
+}
+
+.index-counters dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.index-counters dd {
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.index-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.index-dir {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.index-failures {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  font-size: 13px;
+}
+
+.index-failures li {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+  color: var(--error);
+}
+
+.hint {
+  color: var(--muted);
+  margin-top: 24px;
+}
+
+.error {
+  color: var(--error);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+footer {
+  margin-top: 40px;
+  font-size: 12px;
+  color: var(--muted);
+}
