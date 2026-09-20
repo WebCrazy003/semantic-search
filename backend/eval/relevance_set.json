@@ -1,0 +1,71 @@
+{
+  "corpus": "fixtures",
+  "cases": [
+    {
+      "id": "zh-to-zh-filter",
+      "group": "same_language",
+      "query": "如何更换滤芯",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 1 }]
+    },
+    {
+      "id": "zh-to-zh-pressure",
+      "group": "same_language",
+      "query": "正常工作压力是多少",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 2 }]
+    },
+    {
+      "id": "zh-to-zh-warranty",
+      "group": "same_language",
+      "query": "保修期是多久",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 3 }]
+    },
+    {
+      "id": "ko-to-ko-filter",
+      "group": "same_language",
+      "query": "필터 교체 방법",
+      "expect": [{ "filename": "manual_ko.pdf", "page": 1 }]
+    },
+    {
+      "id": "ko-to-ko-pressure",
+      "group": "same_language",
+      "query": "정상 작동 압력은 얼마입니까",
+      "expect": [{ "filename": "manual_ko.pdf", "page": 2 }]
+    },
+    {
+      "id": "ko-to-ko-warranty",
+      "group": "same_language",
+      "query": "보증 기간은 얼마나 됩니까",
+      "expect": [{ "filename": "manual_ko.pdf", "page": 3 }]
+    },
+    {
+      "id": "ko-query-zh-document",
+      "group": "cross_language",
+      "query": "필터를 교체하기 전에 전원을 끄십시오",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 1 }]
+    },
+    {
+      "id": "zh-query-ko-document",
+      "group": "cross_language",
+      "query": "更换滤芯之前关闭主电源",
+      "expect": [{ "filename": "manual_ko.pdf", "page": 1 }]
+    },
+    {
+      "id": "en-query-zh-document",
+      "group": "cross_language",
+      "query": "switch off the main power before replacing the filter",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 1 }]
+    },
+    {
+      "id": "semantic-not-keyword",
+      "group": "same_language",
+      "query": "设备保养的时间安排",
+      "expect": [{ "filename": "manual_zh.pdf", "page": 2 }]
+    },
+    {
+      "id": "table-lookup",
+      "group": "same_language",
+      "query": "密封圈多久更换一次",
+      "expect": [{ "filename": "manual_mixed.pdf", "page": 3 }]
+    }
+  ]
+}
