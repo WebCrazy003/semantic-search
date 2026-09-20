@@ -68,7 +68,11 @@ class BgeEmbeddingService:
         started = time.perf_counter()
         self._model = SentenceTransformer(str(model_path), device=self._device)
         self._model.max_seq_length = max_seq_length
-        self.dimension = int(self._model.get_sentence_embedding_dimension())
+        # sentence-transformers renamed this method; support both spellings.
+        read_dimension = getattr(
+            self._model, "get_embedding_dimension", self._model.get_sentence_embedding_dimension
+        )
+        self.dimension = int(read_dimension())
         logger.info(
             "loaded BGE-M3 from %s on %s in %.1fs (dimension=%d, max_seq_length=%d)",
             model_path,

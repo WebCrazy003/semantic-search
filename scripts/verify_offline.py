@@ -29,7 +29,10 @@ def main() -> int:
     model = SentenceTransformer(str(MODEL_DIR))
     print(f"OK    loaded in {time.perf_counter() - started:.1f}s on {model.device}")
 
-    dimension = model.get_sentence_embedding_dimension()
+    read_dimension = getattr(
+        model, "get_embedding_dimension", model.get_sentence_embedding_dimension
+    )
+    dimension = read_dimension()
     print(f"      dimension: {dimension}")
     if dimension != 1024:
         print("FAIL  expected 1024 dimensions")
