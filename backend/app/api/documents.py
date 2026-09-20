@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 
 from app.deps import Container, get_container
 from app.logging_config import get_logger
@@ -104,6 +105,38 @@ async def upload_documents(
         logger.info("stored upload %s (%d bytes)", target.name, len(payload))
 
     return UploadResponse(saved=saved, rejected=rejected, directory=str(directory))
+
+
+@router.get("/documents/{document_id}/file")
+def get_document_file(
+    document_id: str,
+    container: Container = Depends(get_container),
+) -> FileResponse:
+    """Serve one indexed PDF so the UI can open it at the matching page.
+
+    Only files that are in the manifest and still inside the configured documents
+    folder are served: the id is not a path, and the resolved path is checked against
+    the folder, so no request can read anything else on the machine.
+    """
+    record = container.manifest.get(document_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="No such document")
+
+    root = container.settings.pdf_directory.resolve()
+    for candidate in record.known_paths:
+        path = Path(candidate).resolve()
+        if path.is_relative_to(root) and path.is_file():
+            return FileResponse(
+                path,
+                media_type="application/pdf",
+                filename=record.filename,
+                content_disposition_type="inline",
+            )
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"{record.filename} is no longer in the documents folder",
+    )
 
 
 @router.delete("/documents/{document_id}", response_model=RemovedDocumentResponse)

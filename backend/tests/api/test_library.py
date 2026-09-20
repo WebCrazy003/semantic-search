@@ -271,3 +271,50 @@ class TestDocumentDetail:
         assert scan["status"] == "unsupported"
         assert "scanned" in scan["error_message"]
 
+
+
+class TestOpeningTheSourceFile:
+    def test_an_indexed_pdf_is_served_inline(self, client: TestClient) -> None:
+        _index(client)
+        document = next(
+            d for d in client.get("/api/documents").json() if d["filename"] == "manual_zh.pdf"
+        )
+
+        response = client.get(f"/api/documents/{document['document_id']}/file")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/pdf"
+        assert "inline" in response.headers["content-disposition"]
+        assert response.content.startswith(b"%PDF-")
+
+    def test_an_unknown_document_is_a_404(self, client: TestClient) -> None:
+        assert client.get(f"/api/documents/{'f' * 64}/file").status_code == 404
+
+    def test_a_file_deleted_from_the_folder_is_a_404(self, client: TestClient, container) -> None:
+        _index(client)
+        document = next(
+            d for d in client.get("/api/documents").json() if d["filename"] == "manual_zh.pdf"
+        )
+        (container.settings.pdf_directory / "manual_zh.pdf").unlink()
+
+        response = client.get(f"/api/documents/{document['document_id']}/file")
+        assert response.status_code == 404
+        assert "no longer in the documents folder" in response.json()["detail"]
+
+    def test_a_record_pointing_outside_the_folder_is_refused(
+        self, client: TestClient, container, tmp_path
+    ) -> None:
+        # A manifest row is the only input, so a doctored row must not turn into a
+        # read of any file on the machine.
+        _index(client)
+        document = next(
+            d for d in client.get("/api/documents").json() if d["filename"] == "manual_zh.pdf"
+        )
+        outsider = tmp_path / "outside.pdf"
+        outsider.write_bytes(b"%PDF-1.4 secret")
+
+        record = container.manifest.get(document["document_id"])
+        record.filepath = str(outsider)
+        record.alt_filepaths = []
+        container.manifest.upsert(record)
+
+        assert client.get(f"/api/documents/{document['document_id']}/file").status_code == 404

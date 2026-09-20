@@ -1,7 +1,7 @@
 // frontend/src/components/DocumentList.tsx
 import { useMemo, useState } from 'react'
 import { usePagination } from '../hooks/usePagination'
-import type { DocumentSummary } from '../services/api'
+import { documentFileUrl, type DocumentSummary } from '../services/api'
 import { Pagination } from './Pagination'
 import { StatusBadge } from './StatusBadge'
 
@@ -86,7 +86,18 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
             {paged.items.map((document) => (
               <tr key={document.document_id}>
                 <td title={document.filepath}>
-                  <span className="filename">{document.filename}</span>
+                  {document.status === 'failed' ? (
+                    <span className="filename">{document.filename}</span>
+                  ) : (
+                    <a
+                      className="filename open-source"
+                      href={documentFileUrl(document.document_id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {document.filename} ↗
+                    </a>
+                  )}
                   {document.title ? <span className="doc-title">{document.title}</span> : null}
                   {document.error_message ? (
                     <span className="doc-error">{document.error_message}</span>

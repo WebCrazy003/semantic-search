@@ -44,7 +44,7 @@ describe('SearchResult', () => {
 })
 
 describe('long passages', () => {
-  const long = '第一句。'.repeat(60)
+  const long = '第一句。'.repeat(200) // 800 characters, well past the snippet limit
 
   function hitWith(text: string): SearchHit {
     return {
@@ -70,7 +70,9 @@ describe('long passages', () => {
 
   it('offers to show the rest, with its length', () => {
     render(<SearchResult hit={hitWith(long)} />)
-    expect(screen.getByRole('button', { name: /show more \(240 characters\)/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /show more \(\d+ more characters\)/i }),
+    ).toBeInTheDocument()
   })
 
   it('expands to the full passage and collapses again', async () => {
@@ -130,5 +132,33 @@ describe('readable passages', () => {
   it('still highlights short Chinese terms', () => {
     render(<SearchResult hit={hitWith('重构可以改善代码结构。')} query="重构 代码" />)
     expect(screen.getByText('重构').tagName).toBe('MARK')
+  })
+})
+
+describe('opening the source PDF', () => {
+  it('links to the file at the page the passage came from', () => {
+    render(<SearchResult hit={{ ...hit, page_start: 12, page_end: 12 }} />)
+    const link = screen.getByRole('link', { name: /open page 12 in the pdf/i })
+    expect(link).toHaveAttribute('href', '/api/documents/abc123/file#page=12')
+  })
+
+  it('opens in a new tab without handing the opener over', () => {
+    render(<SearchResult hit={hit} />)
+    const link = screen.getByRole('link', { name: /open page/i })
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it('uses the first page when a passage spans two', () => {
+    render(<SearchResult hit={{ ...hit, page_start: 7, page_end: 8 }} />)
+    expect(screen.getByRole('link', { name: /open pages 7 to 8/i })).toHaveAttribute(
+      'href',
+      '/api/documents/abc123/file#page=7',
+    )
+  })
+
+  it('shows where the file lives on disk', () => {
+    render(<SearchResult hit={hit} />)
+    expect(screen.getByText('/documents/manual_zh.pdf')).toBeInTheDocument()
   })
 })

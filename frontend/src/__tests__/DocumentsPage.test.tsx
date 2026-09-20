@@ -20,7 +20,7 @@ describe('DocumentsPage', () => {
     render(<DocumentsPage library={library} />)
 
     const row = within(screen.getByRole('table')).getAllByRole('row')[1]
-    expect(within(row).getByText('manual_zh.pdf')).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: /manual_zh\.pdf/ })).toBeInTheDocument()
     expect(within(row).getByText('手册')).toBeInTheDocument()
     expect(within(row).getByText('102')).toBeInTheDocument()
     expect(within(row).getByText('430')).toBeInTheDocument()
@@ -108,5 +108,22 @@ describe('DocumentsPage', () => {
     render(<DocumentsPage library={library} />)
     await userEvent.click(screen.getByRole('button', { name: /refresh/i }))
     expect(library.refresh).toHaveBeenCalled()
+  })
+})
+
+describe('opening a document from the table', () => {
+  it('links the filename to the stored PDF', () => {
+    render(<DocumentsPage library={makeLibrary({ documents: [makeDocument()] })} />)
+    const link = screen.getByRole('link', { name: /manual_zh\.pdf/ })
+    expect(link).toHaveAttribute('href', `/api/documents/${'a'.repeat(64)}/file`)
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('does not link a file that could not be read', () => {
+    const library = makeLibrary({
+      documents: [makeDocument({ status: 'failed', error_message: 'cannot open' })],
+    })
+    render(<DocumentsPage library={library} />)
+    expect(screen.queryByRole('link', { name: /manual_zh\.pdf/ })).toBeNull()
   })
 })

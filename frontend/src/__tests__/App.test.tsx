@@ -30,7 +30,7 @@ describe('App', () => {
   it('switches to the documents tab', async () => {
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'Documents' }))
-    expect(await screen.findByText('manual_zh.pdf')).toBeInTheDocument()
+    expect(await screen.findByText(/manual_zh\.pdf/)).toBeInTheDocument()
   })
 
   it('switches to the indexing tab', async () => {

@@ -209,3 +209,13 @@ export function removeDocument(documentId: string): Promise<RemovedDocument> {
 export function clearIndex(): Promise<ClearResult> {
   return call<ClearResult>('/api/index/clear', { method: 'POST' })
 }
+
+/**
+ * Where the browser can open one indexed PDF. The #page fragment is understood by
+ * the built-in PDF viewers in Chrome, Safari and Firefox, so the file opens at the
+ * passage rather than at page one.
+ */
+export function documentFileUrl(documentId: string, page?: number): string {
+  const base = `/api/documents/${documentId}/file`
+  return page && page > 0 ? `${base}#page=${page}` : base
+}

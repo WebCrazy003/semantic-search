@@ -1,15 +1,16 @@
 // frontend/src/components/SearchResult.tsx
 import { useState } from 'react'
-import type { SearchHit } from '../services/api'
+import { documentFileUrl, type SearchHit } from '../services/api'
 
 interface Props {
   hit: SearchHit
   query?: string
 }
 
-// A passage can be several hundred characters. Showing the whole thing buries the
-// next result, so the card opens with a snippet and expands on request.
-const SNIPPET_CHARS = 180
+// A passage can run to a couple of thousand characters. The card shows a generous
+// opening so most results can be judged without expanding, and holds the rest behind
+// Show more so a long passage does not bury the next result.
+const SNIPPET_CHARS = 460
 const SENTENCE_ENDS = /[。！？；.!?;]/g
 
 function snippet(text: string): string {
@@ -62,16 +63,33 @@ export function SearchResult({ hit, query }: Props) {
 
       <p className={`result-text${expanded ? ' expanded' : ''}`}>{highlight(shown, query)}</p>
 
-      {truncated ? (
-        <button
-          type="button"
-          className="link-button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
+      <div className="result-actions">
+        {truncated ? (
+          <button
+            type="button"
+            className="link-button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded
+              ? 'Show less'
+              : `Show more (${body.length - short.length + 1} more characters)`}
+          </button>
+        ) : null}
+
+        <a
+          className="open-source"
+          href={documentFileUrl(hit.document_id, hit.page_start)}
+          target="_blank"
+          rel="noopener noreferrer"
         >
-          {expanded ? 'Show less' : `Show more (${body.length} characters)`}
-        </button>
-      ) : null}
+          Open {pageLabel(hit).toLowerCase()} in the PDF ↗
+        </a>
+
+        <span className="result-path" title={hit.filepath}>
+          {hit.filepath}
+        </span>
+      </div>
     </li>
   )
 }
