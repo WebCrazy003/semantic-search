@@ -11,6 +11,7 @@ import hashlib
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 import pytest
 
@@ -74,3 +75,13 @@ def token_counter() -> CharTokenCounter:
 @pytest.fixture
 def fake_embedder() -> FakeEmbeddingService:
     return FakeEmbeddingService()
+
+
+@pytest.fixture(scope="session")
+def corpus_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The generated CJK PDF corpus, built once per test session."""
+    from tests.fixtures.make_fixtures import build_all
+
+    directory = tmp_path_factory.mktemp("corpus")
+    build_all(directory)
+    return directory
