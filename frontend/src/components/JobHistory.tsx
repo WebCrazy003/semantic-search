@@ -25,9 +25,9 @@ export function JobHistory({ jobs }: Props) {
                   <th>Started</th>
                   <th>Trigger</th>
                   <th>State</th>
-                  <th className="numeric">Files</th>
+                  <th className="numeric">Checked</th>
                   <th className="numeric">Indexed</th>
-                  <th className="numeric">Skipped</th>
+                  <th className="numeric">Unchanged</th>
                   <th className="numeric">Unsupported</th>
                   <th className="numeric">Failed</th>
                   <th className="numeric">Removed</th>

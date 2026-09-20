@@ -65,7 +65,7 @@ export function JobProgress({ status, busy, onIndex }: Props) {
             {running ? (
               <>
                 <strong>
-                  {processed} of {total || '?'} files
+                  {processed} of {total || '?'} files checked
                 </strong>
                 {status.current_file ? (
                   <>
@@ -77,7 +77,13 @@ export function JobProgress({ status, busy, onIndex }: Props) {
               </>
             ) : (
               <>
-                {status.status} — {processed} of {total} files
+                {status.status} — checked {total} file{total === 1 ? '' : 's'} in the folder,{' '}
+                <strong>
+                  indexed {status.indexed_documents}
+                </strong>
+                {status.skipped_documents > 0
+                  ? `, ${status.skipped_documents} already up to date`
+                  : ''}
               </>
             )}
           </p>
@@ -85,7 +91,11 @@ export function JobProgress({ status, busy, onIndex }: Props) {
           <dl className="index-counters">
             <Counter label="Passages" value={status.total_chunks} highlight={running} />
             <Counter label="Indexed" value={status.indexed_documents} />
-            <Counter label="Skipped" value={status.skipped_documents} />
+            <Counter
+              label="Unchanged"
+              value={status.skipped_documents}
+              hint="Already indexed and not modified since, including duplicate copies of a file"
+            />
             <Counter label="Unsupported" value={status.unsupported_documents} />
             <Counter label="Failed" value={status.failed_documents} tone={status.failed_documents ? 'bad' : undefined} />
             <Counter label="Removed" value={status.deleted_documents} />
@@ -120,14 +130,16 @@ function Counter({
   value,
   highlight = false,
   tone,
+  hint,
 }: {
   label: string
   value: number
   highlight?: boolean
   tone?: string
+  hint?: string
 }) {
   return (
-    <div className={`counter${highlight ? ' live' : ''}${tone ? ` ${tone}` : ''}`}>
+    <div className={`counter${highlight ? ' live' : ''}${tone ? ` ${tone}` : ''}`} title={hint}>
       <dt>{label}</dt>
       <dd>
         <CountUp value={value} />

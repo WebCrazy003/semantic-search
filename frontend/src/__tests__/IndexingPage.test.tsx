@@ -266,3 +266,45 @@ describe('live progress detail', () => {
     expect(passages).toHaveTextContent('137')
   })
 })
+
+describe('what the file count means', () => {
+  it('says files were checked, not imported, while running', () => {
+    const library = makeLibrary({
+      status: makeStatus({ status: 'running', total_documents: 21, processed_documents: 3 }),
+    })
+    render(<IndexingPage library={library} />)
+    expect(screen.getByText(/3 of 21 files checked/)).toBeInTheDocument()
+  })
+
+  it('separates what was indexed from what was already up to date', () => {
+    const library = makeLibrary({
+      status: makeStatus({
+        status: 'completed',
+        trigger: 'upload',
+        total_documents: 21,
+        processed_documents: 21,
+        indexed_documents: 1,
+        skipped_documents: 20,
+      }),
+    })
+    render(<IndexingPage library={library} />)
+
+    const panel = screen.getByRole('heading', { name: /indexing job/i }).closest('section')!
+    expect(panel.textContent).toContain('checked 21 files in the folder')
+    expect(panel.textContent).toContain('indexed 1')
+    expect(panel.textContent).toContain('20 already up to date')
+  })
+
+  it('labels the skipped counter as unchanged', () => {
+    const library = makeLibrary({
+      status: makeStatus({ status: 'completed', skipped_documents: 20 }),
+    })
+    render(<IndexingPage library={library} />)
+    expect(screen.getByText('Unchanged').closest('div')).toHaveTextContent('20')
+  })
+
+  it('explains up front that importing scans the whole folder', () => {
+    render(<IndexingPage library={makeLibrary()} />)
+    expect(screen.getByText(/runs a job over the whole folder/i)).toBeInTheDocument()
+  })
+})
