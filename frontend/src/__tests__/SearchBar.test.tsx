@@ -38,4 +38,12 @@ describe('SearchBar', () => {
     render(<SearchBar onSearch={vi.fn()} busy />)
     expect(screen.getByRole('button', { name: /searching/i })).toBeDisabled()
   })
+
+  it('searches when Enter is pressed in the box', async () => {
+    const onSearch = vi.fn()
+    render(<SearchBar onSearch={onSearch} busy={false} />)
+    await userEvent.type(screen.getByLabelText('Search documents'), '필터 교체 방법{Enter}')
+    expect(onSearch).toHaveBeenCalledWith('필터 교체 방법')
+  })
+
 })
