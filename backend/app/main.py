@@ -32,6 +32,10 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         built = container or build_container(resolved)
         application.state.container = built
         built.manifest.initialise()
+        # A job left 'running' by a killed process would otherwise block the UI forever.
+        abandoned = built.manifest.abandon_running_jobs()
+        if abandoned:
+            logger.warning("marked %d interrupted indexing job(s) as failed", abandoned)
         built.qdrant.ensure_collection()
         built.embedder.warmup()
         logger.info("ready on %s:%d", resolved.api_host, resolved.api_port)

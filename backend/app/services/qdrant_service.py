@@ -75,6 +75,17 @@ class QdrantService:
             )
         self._ensure_payload_indexes()
 
+    def recreate_collection(self) -> None:
+        """Drop the collection and build an empty one with the same configuration.
+
+        Cheaper and more certain than deleting points one document at a time, and it
+        leaves the payload indexes in place.
+        """
+        if self.collection_exists():
+            self._client.delete_collection(self._collection)
+            logger.info("deleted collection %s", self._collection)
+        self.ensure_collection()
+
     def _verify_vector_size(self) -> None:
         info = self._client.get_collection(self._collection)
         params = info.config.params.vectors

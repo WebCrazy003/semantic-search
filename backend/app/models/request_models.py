@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -25,3 +27,6 @@ class IndexRequest(BaseModel):
         default=None, description="Defaults to PDF_DIRECTORY when omitted"
     )
     force: bool = Field(default=False, description="Re-index files that are unchanged")
+    trigger: Literal["scan", "upload"] = Field(
+        default="scan", description="Labels the run in the job history"
+    )

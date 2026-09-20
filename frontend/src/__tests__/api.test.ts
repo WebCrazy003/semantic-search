@@ -78,7 +78,7 @@ describe('indexing', () => {
   it('posts an empty body when no directory is given', async () => {
     const spy = mockFetch({ status: 'started', directory: '/documents' })
     await startIndexing()
-    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ force: false })
+    expect(JSON.parse(spy.mock.calls[0][1].body)).toEqual({ force: false, trigger: 'scan' })
   })
 
   it('reports already_running without throwing', async () => {

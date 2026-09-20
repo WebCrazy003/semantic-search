@@ -57,7 +57,11 @@ class IndexFailure(BaseModel):
 
 class IndexStatusResponse(BaseModel):
     status: Literal["idle", "running", "completed", "failed"]
+    job_id: str | None = None
+    trigger: str = "scan"
     directory: str | None = None
+    current_file: str | None = None
+    processed_documents: int = 0
     total_documents: int = 0
     indexed_documents: int = 0
     skipped_documents: int = 0
@@ -74,9 +78,59 @@ class DocumentSummary(BaseModel):
     document_id: str
     filename: str
     filepath: str
+    file_size: int = 0
+    file_hash: str = ""
+    modified_at: datetime | None = None
     pages: int
     chunks: int
     language: str | None = None
     title: str | None = None
     status: str
+    error_type: str | None = None
+    error_message: str | None = None
+    alt_filepaths: list[str] = []
     indexed_at: datetime | None = None
+
+
+class JobSummary(BaseModel):
+    """One finished or running indexing run, read back from the manifest."""
+
+    job_id: str
+    trigger: str
+    directory: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    total: int = 0
+    processed: int = 0
+    indexed: int = 0
+    skipped: int = 0
+    unsupported: int = 0
+    failed: int = 0
+    deleted: int = 0
+    chunks: int = 0
+    failures: list[dict[str, str]] = []
+
+
+class RejectedUpload(BaseModel):
+    filename: str
+    reason: str
+
+
+class UploadResponse(BaseModel):
+    saved: list[str] = []
+    rejected: list[RejectedUpload] = []
+    directory: str
+
+
+class RemovedDocumentResponse(BaseModel):
+    document_id: str
+    filename: str
+    chunks_removed: int
+    file_kept: bool = True
+
+
+class ClearIndexResponse(BaseModel):
+    documents_removed: int
+    passages_removed: int
+    files_kept: bool = True

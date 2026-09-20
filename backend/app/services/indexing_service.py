@@ -12,6 +12,7 @@ concurrent POSTs cannot both begin a run.
 from __future__ import annotations
 
 import threading
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from app.models.domain import ExtractedDocument
 from app.models.response_models import IndexFailure, IndexStatusResponse
 from app.services.chunk_service import Chunker
 from app.services.embedding_service import EmbeddingService
-from app.services.manifest_service import DocumentRecord, ManifestService
+from app.services.manifest_service import DocumentRecord, JobRecord, ManifestService
 from app.services.pdf_service import PdfExtractionError, PdfService, PdfUnsupportedError
 from app.services.qdrant_service import QdrantService
 
@@ -40,7 +41,11 @@ class _State:
 
     def __init__(self) -> None:
         self.status: str = "idle"
+        self.job_id: str | None = None
+        self.trigger: str = "scan"
         self.directory: str | None = None
+        self.current_file: str | None = None
+        self.processed = 0
         self.total = 0
         self.indexed = 0
         self.skipped = 0
@@ -83,17 +88,26 @@ class IndexingService:
     def resolve_directory(self, directory: Path | str | None) -> Path:
         return Path(directory) if directory else self._default_directory
 
-    def start(self, directory: Path | str | None, force: bool = False) -> bool:
-        """Reserve a run. False means one is already in progress."""
+    def start(
+        self, directory: Path | str | None, force: bool = False, trigger: str = "scan"
+    ) -> bool:
+        """Reserve a run. False means one is already in progress.
+
+        The job row is written here rather than in run(), so a job that never gets to
+        run still leaves a trace in the history.
+        """
         if not self._run_lock.acquire(blocking=False):
             return False
         with self._state_lock:
             self._state = _State()
             self._state.status = "running"
+            self._state.job_id = uuid.uuid4().hex
+            self._state.trigger = trigger
             self._state.directory = str(self.resolve_directory(directory))
             self._state.started_at = _now()
             reserved = self._state.directory
-        logger.info("indexing reserved for %s (force=%s)", reserved, force)
+        self._persist_job()
+        logger.info("indexing reserved for %s (force=%s, trigger=%s)", reserved, force, trigger)
         return True
 
     def snapshot(self) -> IndexStatusResponse:
@@ -101,7 +115,11 @@ class IndexingService:
             state = self._state
             return IndexStatusResponse(
                 status=state.status,  # type: ignore[arg-type]
+                job_id=state.job_id,
+                trigger=state.trigger,
                 directory=state.directory,
+                current_file=state.current_file,
+                processed_documents=state.processed,
                 total_documents=state.total,
                 indexed_documents=state.indexed,
                 skipped_documents=state.skipped,
@@ -141,6 +159,8 @@ class IndexingService:
 
         seen: dict[str, Path] = {}
         for path in paths:
+            with self._state_lock:
+                self._state.current_file = path.name
             try:
                 self._process(path, seen, force)
             except Exception as exc:  # last line of defence; the run continues
@@ -152,7 +172,13 @@ class IndexingService:
                     error_message=str(exc),
                 )
                 self._mark_document_failed(path, exc)
+            finally:
+                with self._state_lock:
+                    self._state.processed += 1
+                self._persist_job()
 
+        with self._state_lock:
+            self._state.current_file = None
         self._sweep_deleted(set(seen))
         self._finish("completed")
 
@@ -305,8 +331,10 @@ class IndexingService:
     def _finish(self, status: str) -> None:
         with self._state_lock:
             self._state.status = status
+            self._state.current_file = None
             self._state.finished_at = _now()
             state = self._state
+        self._persist_job()
         logger.info(
             "indexing %s: indexed=%d skipped=%d unsupported=%d failed=%d deleted=%d chunks=%d",
             status,
@@ -317,3 +345,68 @@ class IndexingService:
             state.deleted,
             state.chunks,
         )
+
+    def _persist_job(self) -> None:
+        """Mirror the in-memory run state into the manifest's job history.
+
+        Called once per document so a crashed or restarted process still leaves an
+        accurate record of how far the run got.
+        """
+        with self._state_lock:
+            state = self._state
+            if state.job_id is None:
+                return
+            job = JobRecord(
+                job_id=state.job_id,
+                trigger=state.trigger,
+                directory=state.directory or "",
+                status=state.status,
+                started_at=state.started_at or _now(),
+                finished_at=state.finished_at,
+                total=state.total,
+                processed=state.processed,
+                indexed=state.indexed,
+                skipped=state.skipped,
+                unsupported=state.unsupported,
+                failed=state.failed,
+                deleted=state.deleted,
+                chunks=state.chunks,
+                failures=[
+                    {
+                        "filename": failure.filename,
+                        "error_type": failure.error_type,
+                        "error_message": failure.error_message,
+                    }
+                    for failure in state.failures
+                ],
+            )
+        self._manifest.upsert_job(job)
+
+    # --------------------------------------------------------------- removals
+
+    def remove_document(self, document_id: str) -> DocumentRecord | None:
+        """Unindex one document: its passages and its manifest row go, the file stays.
+
+        A later scan re-indexes the file, which is the documented behaviour: this
+        removes it from search, it does not delete anything from disk.
+        """
+        record = self._manifest.get(document_id)
+        if record is None:
+            return None
+        self._qdrant.delete_document(document_id)
+        self._manifest.delete(document_id)
+        logger.info("removed %s from the index (file left on disk)", record.filename)
+        return record
+
+    def clear_index(self) -> tuple[int, int]:
+        """Drop every passage and every document record. Files and history survive.
+
+        Returns (documents_removed, passages_removed).
+        """
+        passages = self._qdrant.count_points()
+        documents = self._manifest.clear_documents()
+        self._qdrant.recreate_collection()
+        with self._state_lock:
+            self._state = _State()
+        logger.info("cleared the index: %d documents, %d passages", documents, passages)
+        return documents, passages

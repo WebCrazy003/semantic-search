@@ -242,3 +242,168 @@ footer {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ---- library: import, jobs, and document detail ---------------------- */
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.panel.danger {
+  border-color: #e4c7c7;
+}
+
+.import-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chosen-files {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.upload-result {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.rejected {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #a4332c;
+}
+
+.limits {
+  margin-top: 14px;
+  font-size: 13px;
+}
+
+.limits summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.limits-body ul {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+}
+
+.limits-body .works {
+  margin: 8px 0 2px;
+  font-weight: 600;
+}
+
+.progress-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 14px;
+}
+
+.progress {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #e8e8e6;
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.progress-text {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+table.jobs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.jobs th,
+table.jobs td {
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+table.jobs .row-failed td {
+  color: #a4332c;
+}
+
+.library-summary {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.library-summary strong {
+  color: var(--fg);
+  font-size: 15px;
+}
+
+.filename {
+  display: block;
+}
+
+.doc-title,
+.doc-error {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.doc-error {
+  color: #a4332c;
+}
+
+button.destructive {
+  border-color: #d9b3b3;
+  color: #a4332c;
+}
+
+button.destructive:hover:not(:disabled) {
+  background: #fbf2f2;
+}
+
+.confirm,
+.confirm-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.confirm p {
+  margin: 0 12px 0 0;
+}

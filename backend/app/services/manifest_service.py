@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.logging_config import get_logger
@@ -39,7 +39,44 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 CREATE INDEX IF NOT EXISTS idx_documents_filename ON documents(filename);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
+
+CREATE TABLE IF NOT EXISTS index_jobs (
+    job_id        TEXT PRIMARY KEY,
+    trigger       TEXT NOT NULL,
+    directory     TEXT NOT NULL,
+    status        TEXT NOT NULL,
+    started_at    TEXT NOT NULL,
+    finished_at   TEXT,
+    total         INTEGER NOT NULL DEFAULT 0,
+    processed     INTEGER NOT NULL DEFAULT 0,
+    indexed       INTEGER NOT NULL DEFAULT 0,
+    skipped       INTEGER NOT NULL DEFAULT 0,
+    unsupported   INTEGER NOT NULL DEFAULT 0,
+    failed        INTEGER NOT NULL DEFAULT 0,
+    deleted       INTEGER NOT NULL DEFAULT 0,
+    chunks        INTEGER NOT NULL DEFAULT 0,
+    failures      TEXT NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_started ON index_jobs(started_at DESC);
 """
+
+_JOB_COLUMNS = (
+    "job_id",
+    "trigger",
+    "directory",
+    "status",
+    "started_at",
+    "finished_at",
+    "total",
+    "processed",
+    "indexed",
+    "skipped",
+    "unsupported",
+    "failed",
+    "deleted",
+    "chunks",
+    "failures",
+)
 
 _COLUMNS = (
     "document_id",
@@ -82,6 +119,27 @@ class DocumentRecord:
     def known_paths(self) -> list[str]:
         """Every place this exact content has been seen, primary path first."""
         return [self.filepath, *self.alt_filepaths]
+
+
+@dataclass
+class JobRecord:
+    """One indexing run, kept after it finishes so the UI can show a history."""
+
+    job_id: str
+    trigger: str  # scan | upload
+    directory: str
+    status: str  # running | completed | failed
+    started_at: datetime
+    finished_at: datetime | None = None
+    total: int = 0
+    processed: int = 0
+    indexed: int = 0
+    skipped: int = 0
+    unsupported: int = 0
+    failed: int = 0
+    deleted: int = 0
+    chunks: int = 0
+    failures: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -177,6 +235,59 @@ class ManifestService:
             documents=int(row["documents"]), pages=int(row["pages"]), chunks=int(row["chunks"])
         )
 
+    # ------------------------------------------------------------------- jobs
+
+    def upsert_job(self, job: JobRecord) -> None:
+        placeholders = ", ".join("?" for _ in _JOB_COLUMNS)
+        assignments = ", ".join(f"{name}=excluded.{name}" for name in _JOB_COLUMNS[1:])
+        connection = self._connect()
+        with connection:
+            connection.execute(
+                f"INSERT INTO index_jobs ({', '.join(_JOB_COLUMNS)}) VALUES ({placeholders}) "
+                f"ON CONFLICT(job_id) DO UPDATE SET {assignments}",
+                self._job_to_row(job),
+            )
+
+    def get_job(self, job_id: str) -> JobRecord | None:
+        row = (
+            self._connect()
+            .execute("SELECT * FROM index_jobs WHERE job_id = ?", (job_id,))
+            .fetchone()
+        )
+        return self._job_from_row(row) if row else None
+
+    def recent_jobs(self, limit: int = 20) -> list[JobRecord]:
+        rows = (
+            self._connect()
+            .execute("SELECT * FROM index_jobs ORDER BY started_at DESC LIMIT ?", (limit,))
+            .fetchall()
+        )
+        return [self._job_from_row(row) for row in rows]
+
+    def abandon_running_jobs(self) -> int:
+        """Mark jobs left 'running' by a crash or restart as failed.
+
+        Without this a killed process leaves a job that never completes, and the UI
+        would show a run in progress forever.
+        """
+        connection = self._connect()
+        with connection:
+            cursor = connection.execute(
+                "UPDATE index_jobs SET status = 'failed', finished_at = ? "
+                "WHERE status = 'running'",
+                (datetime.now(tz=UTC).isoformat(),),
+            )
+        return int(cursor.rowcount or 0)
+
+    # ------------------------------------------------------------ bulk delete
+
+    def clear_documents(self) -> int:
+        """Drop every document record, keeping the job history."""
+        connection = self._connect()
+        with connection:
+            cursor = connection.execute("DELETE FROM documents")
+        return int(cursor.rowcount or 0)
+
     def close(self) -> None:
         if self._connection is not None:
             self._connection.close()
@@ -202,6 +313,48 @@ class ManifestService:
             record.error_message,
             record.indexed_at.isoformat(),
             json.dumps(record.alt_filepaths),
+        )
+
+    @staticmethod
+    def _job_to_row(job: JobRecord) -> tuple[object, ...]:
+        return (
+            job.job_id,
+            job.trigger,
+            job.directory,
+            job.status,
+            job.started_at.isoformat(),
+            job.finished_at.isoformat() if job.finished_at else None,
+            job.total,
+            job.processed,
+            job.indexed,
+            job.skipped,
+            job.unsupported,
+            job.failed,
+            job.deleted,
+            job.chunks,
+            json.dumps(job.failures),
+        )
+
+    @staticmethod
+    def _job_from_row(row: sqlite3.Row) -> JobRecord:
+        return JobRecord(
+            job_id=row["job_id"],
+            trigger=row["trigger"],
+            directory=row["directory"],
+            status=row["status"],
+            started_at=datetime.fromisoformat(row["started_at"]),
+            finished_at=(
+                datetime.fromisoformat(row["finished_at"]) if row["finished_at"] else None
+            ),
+            total=int(row["total"]),
+            processed=int(row["processed"]),
+            indexed=int(row["indexed"]),
+            skipped=int(row["skipped"]),
+            unsupported=int(row["unsupported"]),
+            failed=int(row["failed"]),
+            deleted=int(row["deleted"]),
+            chunks=int(row["chunks"]),
+            failures=json.loads(row["failures"] or "[]"),
         )
 
     @staticmethod

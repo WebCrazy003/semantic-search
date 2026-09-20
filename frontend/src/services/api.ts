@@ -32,7 +32,11 @@ export interface IndexFailure {
 
 export interface IndexStatus {
   status: 'idle' | 'running' | 'completed' | 'failed'
+  job_id: string | null
+  trigger: string
   directory: string | null
+  current_file: string | null
+  processed_documents: number
   total_documents: number
   indexed_documents: number
   skipped_documents: number
@@ -54,12 +58,60 @@ export interface DocumentSummary {
   document_id: string
   filename: string
   filepath: string
+  file_size: number
+  file_hash: string
+  modified_at?: string | null
+  error_type?: string | null
+  error_message?: string | null
+  alt_filepaths: string[]
   pages: number
   chunks: number
   language?: string | null
   title?: string | null
   status: string
   indexed_at?: string | null
+}
+
+export interface JobSummary {
+  job_id: string
+  trigger: string
+  directory: string
+  status: string
+  started_at: string
+  finished_at: string | null
+  total: number
+  processed: number
+  indexed: number
+  skipped: number
+  unsupported: number
+  failed: number
+  deleted: number
+  chunks: number
+  failures: { filename: string; error_type: string; error_message: string }[]
+}
+
+export interface RejectedUpload {
+  filename: string
+  reason: string
+}
+
+export interface UploadResult {
+  saved: string[]
+  rejected: RejectedUpload[]
+  directory: string
+}
+
+export interface RemovedDocument {
+  document_id: string
+  filename: string
+  chunks_removed: number
+  file_kept: boolean
+}
+
+export interface ClearResult {
+  documents_removed: number
+  passages_removed: number
+  files_kept: boolean
 }
 
 export interface SearchParams {
@@ -107,11 +159,14 @@ export async function search(params: SearchParams): Promise<SearchResponse> {
   })
 }
 
-export async function startIndexing(directory?: string, force = false): Promise<IndexStarted> {
+export async function startIndexing(
+  options: { directory?: string; force?: boolean; trigger?: 'scan' | 'upload' } = {},
+): Promise<IndexStarted> {
+  const { directory, force = false, trigger = 'scan' } = options
   const response = await fetch('/api/index', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ ...(directory ? { directory } : {}), force }),
+    body: JSON.stringify({ ...(directory ? { directory } : {}), force, trigger }),
   }).catch(() => {
     throw new Error('Cannot reach the backend. Is it running on 127.0.0.1:8000?')
   })
@@ -132,4 +187,23 @@ export function getIndexStatus(): Promise<IndexStatus> {
 export function getDocuments(status?: string): Promise<DocumentSummary[]> {
   const query = status ? `?status=${encodeURIComponent(status)}` : ''
   return call<DocumentSummary[]>(`/api/documents${query}`)
+}
+
+export function getJobs(limit = 20): Promise<JobSummary[]> {
+  return call<JobSummary[]>(`/api/index/jobs?limit=${limit}`)
+}
+
+export async function uploadDocuments(files: File[]): Promise<UploadResult> {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  // No content-type header: the browser sets the multipart boundary itself.
+  return call<UploadResult>('/api/documents/upload', { method: 'POST', body: form })
+}
+
+export function removeDocument(documentId: string): Promise<RemovedDocument> {
+  return call<RemovedDocument>(`/api/documents/${documentId}`, { method: 'DELETE' })
+}
+
+export function clearIndex(): Promise<ClearResult> {
+  return call<ClearResult>('/api/index/clear', { method: 'POST' })
 }
