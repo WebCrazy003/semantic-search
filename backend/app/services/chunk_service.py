@@ -298,4 +298,7 @@ class Chunker:
                 continue
             merged.append(chunk)
 
-        return [replace(chunk, chunk_index=start_index + offset) for offset, chunk in enumerate(merged)]
+        return [
+            replace(chunk, chunk_index=start_index + offset)
+            for offset, chunk in enumerate(merged)
+        ]

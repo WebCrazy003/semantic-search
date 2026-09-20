@@ -2,8 +2,8 @@
 from pathlib import Path
 
 from tests.fixtures.make_fixtures import (
-    KOREAN_FILTER_SENTENCE,
     CHINESE_FILTER_SENTENCE,
+    KOREAN_FILTER_SENTENCE,
     build_all,
 )
 
