@@ -19,7 +19,9 @@ downloaded.
 
 ## Setup
 
-Once, with the network on:
+Once, with the network on. This is the development setup on macOS and Linux; to
+build a Windows release skip to
+[Windows: building an offline release](#windows-building-an-offline-release).
 
     cd backend && uv venv --python 3.12 && uv sync --all-groups && cd ..
     uv run --directory backend python ../scripts/download_model.py
@@ -38,6 +40,66 @@ Three processes:
 
 Then open http://127.0.0.1:5173. Put PDFs in `documents/` and press
 **Index documents** on the Documents tab.
+
+## Windows: building an offline release
+
+`prepare-offline.bat` turns this repository into a finished release: a folder that
+runs on any 64-bit Windows machine with **no network, no Python, no Node, no Docker
+and no installation step**. The person receiving it copies the folder wherever they
+like and double-clicks `run.bat`.
+
+Run it on a Windows machine that has an internet connection:
+
+    prepare-offline.bat          build the folder
+    prepare-offline.bat zip      build the folder and a .zip beside it
+
+It installs uv and Node.js if they are missing, fetches a relocatable CPython, and
+writes everything into `release\semantic-pdf-search-<version>-win64-offline\`. The
+version comes from the [VERSION](VERSION) file. Expect about 3 GB and 15 to 40
+minutes; re-runs reuse the downloaded model.
+
+### What the release contains
+
+    run.bat              start, and open the browser
+    stop.bat             stop
+    check.bat            prove the installation works
+    README-FIRST.txt     instructions for whoever ends up using it
+    .env                 settings, with QDRANT_PATH already set
+    VERSION.txt          version, build date and build machine
+    documents\           where they drop PDFs
+    backend\app\         the application
+    frontend\dist\       the built interface
+    models\bge-m3\       the embedding model
+    runtime\python\      CPython, carried with the release
+    runtime\lib\         every library, pinned by uv.lock
+    runtime\vc_redist.x64.exe
+
+There is no virtual environment, because a virtual environment records absolute
+paths and would break the moment the folder moved. `run.bat` instead puts
+`runtime\lib` on `PYTHONPATH` and runs `runtime\python\python.exe` directly, so
+every path is relative to the folder. It can be moved, renamed, or put on a
+network drive, and it keeps working.
+
+`check.bat` runs [verify_install.py](scripts/verify_install.py), which imports every
+dependency, reads and writes the embedded vector store, and loads BGE-M3 with Hugging
+Face forced offline. It is the quickest way to tell a broken copy from a broken
+machine.
+
+### How the offline release differs from development
+
+- **No Qdrant server.** `QDRANT_PATH` switches [deps.py](backend/app/deps.py) to an
+  embedded Qdrant that keeps its vectors in a folder. Payload indexes do not exist in
+  that mode, so filtered search scans instead of using an index, and only one process
+  may hold the folder at a time: stop the app before running `check_qdrant.py` or
+  `rebuild_manifest.py` against it. Both scripts follow the same setting, so they talk
+  to whichever store is configured.
+- **No Node and no Vite.** The API serves `frontend/dist` when that folder exists, so
+  the release is one process on one port with no proxy. In development the folder is
+  absent and Vite serves the UI as before.
+- **The CPU does the embedding.** The PyTorch wheel on PyPI for Windows is CPU-only,
+  so `EMBEDDING_DEVICE=auto` resolves to `cpu`. Searching stays fast; indexing a large
+  library takes noticeably longer than on Apple Silicon. A CUDA build would have to
+  come from PyTorch's own package index, which `prepare-offline.bat` does not use.
 
 ## API
 
@@ -96,23 +158,29 @@ To open the UI from a phone or another machine on the same network:
 
     npm --prefix frontend run dev:lan
 
-The UI is then at `http://<this-machine-ip>:5173`. Only the Vite dev server listens on
-the network; the backend and Qdrant stay on `127.0.0.1`, and API calls from the other
-device are proxied through Vite, so nothing else is exposed.
+In a Windows release, `run.bat lan` does the same and prints the address.
+
+The UI is then at `http://<this-machine-ip>:5173`, or port 8000 on Windows. In the
+development setup only the Vite dev server listens on the network; the backend and
+Qdrant stay on `127.0.0.1`, and API calls from the other device are proxied through
+Vite. On Windows the single process binds `0.0.0.0` directly.
 
 **There is no authentication.** Anyone who can reach that address can search every
 indexed document, read the passages, open the PDFs, remove documents and clear the
 index. Use this on a network you trust, and go back to `npm --prefix frontend run dev`
-when you are finished. macOS may ask once whether to allow incoming connections for
-Node; that prompt is this server.
+when you are finished. macOS and Windows may each ask once whether to allow
+incoming connections; that prompt is this server.
 
 ## Offline guarantees
 
 - `ALLOW_MODEL_DOWNLOAD=false` sets `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1`,
   and the backend refuses to start if `models/bge-m3` is missing rather than
   downloading it.
-- Qdrant runs with telemetry disabled and both ports bound to `127.0.0.1`.
-- The backend binds to `127.0.0.1`.
+- Qdrant runs with telemetry disabled and both ports bound to `127.0.0.1`, and with
+  `QDRANT_PATH` set there is no Qdrant process and no port at all.
+- The backend binds to `127.0.0.1` unless it is told otherwise.
+- A Windows release carries its own interpreter and libraries, pinned by `uv.lock`,
+  so nothing is installed or fetched on the machine that runs it.
 - The frontend loads no webfonts and no CDN scripts.
 - Passage text is never logged unless `DEBUG_LOG_TEXT=true`.
 - Query text is never logged.
@@ -133,3 +201,8 @@ rather than failing the run.
 | A PDF is `unsupported` | It is image-only or encrypted; OCR is out of scope |
 | Document counts look wrong | `scripts/rebuild_manifest.py` |
 | Indexing is slow | Raise `EMBEDDING_BATCH_SIZE`, or set `EMBEDDING_DEVICE=mps` |
+| Windows: PyTorch will not import | Run `runtime\vc_redist.x64.exe` as administrator |
+| Windows: run.bat says the release is incomplete | Copy the release folder across again, whole |
+| Windows: anything else | `check.bat` in the release folder |
+| Windows: "already running" | `stop.bat`, then `run.bat` |
+| Embedded store errors about a lock | Two processes opened `qdrant_storage/`; stop the app first |

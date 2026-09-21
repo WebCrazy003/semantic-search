@@ -20,6 +20,11 @@ qdrant_storage/*
 data/*
 !data/.gitkeep
 
+# Offline release builds: prepare-offline.bat writes the finished release into
+# release/ and keeps its downloads in .build/. Both are large and reproducible.
+release/
+.build/
+
 # Secrets and local config
 .env
 
