@@ -52,3 +52,25 @@ def test_overlap_not_smaller_than_target_is_rejected() -> None:
 def test_cors_origins_parse_from_a_comma_separated_string() -> None:
     settings = Settings(_env_file=None, cors_origins="http://a.test,http://b.test")
     assert settings.cors_origin_list == ["http://a.test", "http://b.test"]
+
+
+def test_qdrant_path_is_unset_by_default() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.qdrant_path is None
+    assert settings.embedded_qdrant is False
+
+
+def test_blank_qdrant_path_means_use_the_server() -> None:
+    """An operator who comments out the value should not get an embedded store."""
+    settings = Settings(_env_file=None, qdrant_path="   ")
+    assert settings.qdrant_path is None
+    assert settings.embedded_qdrant is False
+
+
+def test_qdrant_path_switches_to_embedded_and_resolves(tmp_path: Path) -> None:
+    settings = Settings(_env_file=None, qdrant_path="./qdrant_storage")
+    assert settings.qdrant_path == REPO_ROOT / "qdrant_storage"
+    assert settings.embedded_qdrant is True
+
+    absolute = Settings(_env_file=None, qdrant_path=str(tmp_path))
+    assert absolute.qdrant_path == tmp_path

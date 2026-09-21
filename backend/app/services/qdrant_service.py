@@ -9,6 +9,7 @@ repeat, and a retry cannot leave duplicates behind.
 from __future__ import annotations
 
 import uuid
+import warnings
 from collections.abc import Iterator
 from typing import Any
 
@@ -99,11 +100,15 @@ class QdrantService:
     def _ensure_payload_indexes(self) -> None:
         for field in _INDEXED_PAYLOAD_FIELDS:
             try:
-                self._client.create_payload_index(
-                    collection_name=self._collection,
-                    field_name=field,
-                    field_schema=models.PayloadSchemaType.KEYWORD,
-                )
+                with warnings.catch_warnings():
+                    # Embedded Qdrant filters by scanning and says so on every call.
+                    # Filtering still works, so the warning is noise for an end user.
+                    warnings.filterwarnings("ignore", message=".*no effect in the local Qdrant.*")
+                    self._client.create_payload_index(
+                        collection_name=self._collection,
+                        field_name=field,
+                        field_schema=models.PayloadSchemaType.KEYWORD,
+                    )
             except Exception as exc:
                 # Already present, or local mode, which does not need them.
                 logger.debug("payload index on %s not created: %s", field, exc)

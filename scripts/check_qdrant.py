@@ -10,22 +10,26 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from qdrant_client import QdrantClient  # noqa: E402
-
 from app.config import get_settings  # noqa: E402
+from app.deps import build_qdrant_client  # noqa: E402
 
 
 def main() -> int:
     settings = get_settings()
-    client = QdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout)
+    where = settings.qdrant_path if settings.embedded_qdrant else settings.qdrant_url
     try:
+        client = build_qdrant_client(settings)
         collections = [c.name for c in client.get_collections().collections]
     except Exception as exc:
-        print(f"FAIL  cannot reach Qdrant at {settings.qdrant_url}: {exc}")
-        print("      start it with: docker compose up -d")
+        print(f"FAIL  cannot open Qdrant at {where}: {exc}")
+        if settings.embedded_qdrant:
+            # The embedded store is single-writer, so this is nearly always the cause.
+            print("      stop the application first; only one process may hold that folder")
+        else:
+            print("      start it with: docker compose up -d")
         return 1
 
-    print(f"OK    connected to {settings.qdrant_url}")
+    print(f"OK    connected to {where}")
     print(f"      collections: {collections or '(none)'}")
 
     name = settings.qdrant_collection

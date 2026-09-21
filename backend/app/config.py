@@ -34,6 +34,9 @@ class Settings(BaseSettings):
 
     # Qdrant
     qdrant_url: str = "http://127.0.0.1:6333"
+    # Set this and the vectors live in an embedded Qdrant at that path, with no
+    # server and no Docker. Offline installs use it; leave it empty for the server.
+    qdrant_path: Path | None = None
     qdrant_collection: str = "pdf_passages"
     qdrant_timeout: int = 30
     qdrant_upsert_batch: int = 128
@@ -76,6 +79,21 @@ class Settings(BaseSettings):
     def _resolve(cls, value: Path) -> Path:
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()
 
+    @field_validator("qdrant_path", mode="before")
+    @classmethod
+    def _blank_path_is_unset(cls, value: object) -> object:
+        """An empty QDRANT_PATH in .env means "use the server", not "use the cwd"."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("qdrant_path", mode="after")
+    @classmethod
+    def _resolve_optional(cls, value: Path | None) -> Path | None:
+        if value is None:
+            return None
+        return value if value.is_absolute() else (REPO_ROOT / value).resolve()
+
     @model_validator(mode="after")
     def _check_chunk_budget(self) -> Settings:
         if self.chunk_max_tokens < self.chunk_target_tokens:
@@ -85,6 +103,11 @@ class Settings(BaseSettings):
         if self.chunk_min_tokens > self.chunk_target_tokens:
             raise ValueError("chunk_min_tokens must be <= chunk_target_tokens")
         return self
+
+    @property
+    def embedded_qdrant(self) -> bool:
+        """True when vectors live in a local directory rather than a Qdrant server."""
+        return self.qdrant_path is not None
 
     @property
     def cors_origin_list(self) -> list[str]:

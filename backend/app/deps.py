@@ -57,6 +57,19 @@ def chunk_config_from(settings: Settings) -> ChunkConfig:
     )
 
 
+def build_qdrant_client(settings: Settings) -> QdrantClient:
+    """A server client, or an embedded one when QDRANT_PATH is set.
+
+    Embedded mode keeps the vectors in a plain directory, which is what the offline
+    installs use: no container, no daemon, no port. Only one process may hold that
+    directory at a time, so the backend must be stopped before scripts touch it.
+    """
+    if settings.qdrant_path is None:
+        return QdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout)
+    settings.qdrant_path.mkdir(parents=True, exist_ok=True)
+    return QdrantClient(path=str(settings.qdrant_path))
+
+
 def build_container(settings: Settings) -> Container:
     """Load the model and open the stores. Called once, from the lifespan handler."""
     tokenizer = BgeTokenizer(settings.bge_model_path)
@@ -68,7 +81,7 @@ def build_container(settings: Settings) -> Container:
         expected_dimension=settings.vector_size,
     )
     qdrant = QdrantService(
-        client=QdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout),
+        client=build_qdrant_client(settings),
         collection=settings.qdrant_collection,
         vector_size=settings.vector_size,
         upsert_batch=settings.qdrant_upsert_batch,

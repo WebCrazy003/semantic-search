@@ -13,13 +13,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import documents, folders, health, indexing, search
-from app.config import Settings, get_settings
+from app.config import REPO_ROOT, Settings, get_settings
 from app.deps import Container, build_container
 from app.logging_config import configure_logging, get_logger
 
 logger = get_logger("main")
+
+# Built by `npm --prefix frontend run build`. When it is there the API also serves
+# the interface, so an installed copy is one process on one port and needs no Node.
+# In development it is absent and the Vite dev server serves the UI instead.
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
 
 
 def create_app(container: Container | None = None, settings: Settings | None = None) -> FastAPI:
@@ -64,6 +70,12 @@ def create_app(container: Container | None = None, settings: Settings | None = N
     application.include_router(indexing.router, prefix="/api")
     application.include_router(documents.router, prefix="/api")
     application.include_router(folders.router, prefix="/api")
+
+    # Last, so every /api route and /docs is matched before the catch-all mount.
+    if FRONTEND_DIST.is_dir():
+        application.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="ui")
+        logger.info("serving the interface from %s", FRONTEND_DIST)
+
     return application
 
 

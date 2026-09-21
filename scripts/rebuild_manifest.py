@@ -14,17 +14,17 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from qdrant_client import QdrantClient  # noqa: E402
-
 from app.config import get_settings  # noqa: E402
+from app.deps import build_qdrant_client  # noqa: E402
 from app.services.manifest_service import DocumentRecord, ManifestService  # noqa: E402
 from app.services.qdrant_service import QdrantService  # noqa: E402
 
 
 def main() -> int:
     settings = get_settings()
+    # With an embedded store this needs the application stopped: single writer.
     qdrant = QdrantService(
-        client=QdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout),
+        client=build_qdrant_client(settings),
         collection=settings.qdrant_collection,
         vector_size=settings.vector_size,
     )
