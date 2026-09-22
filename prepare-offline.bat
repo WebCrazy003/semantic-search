@@ -20,6 +20,9 @@ set "WINGET_LINKS=%LOCALAPPDATA%\Microsoft\WinGet\Links"
 set "UV_BIN=%USERPROFILE%\.local\bin"
 set "NODE_BIN=%ProgramFiles%\nodejs"
 set "PATH=%UV_BIN%;%NODE_BIN%;%WINGET_LINKS%;%PATH%"
+rem PyTorch's CUDA index. uv export pins torch==X+cu130 but leaves the index out.
+set "TORCH_CUDA=cu130"
+set "TORCH_INDEX=https://download.pytorch.org/whl/%TORCH_CUDA%"
 rem Keep the interpreter this build downloads inside the build folder.
 set "UV_PYTHON_INSTALL_DIR=%BUILD%\python"
 
@@ -46,7 +49,8 @@ echo   Version %VERSION%
 echo   Output  release\%NAME%
 echo.
 echo   This machine needs a network. The result will not.
-echo   Expect roughly 3 GB and 15-40 minutes.
+echo   Expect roughly 6 GB and 20-50 minutes. Most of it is the CUDA build of
+echo   PyTorch, which lets indexing use an NVIDIA RTX GPU when there is one.
 echo.
 
 if not exist "%BUILD%" mkdir "%BUILD%"
@@ -109,12 +113,20 @@ if errorlevel 1 (
     echo       FAIL  uv export failed
     goto :failed
 )
+rem The Windows pin must be the CUDA build. PyPI's Windows torch is CPU-only.
+findstr /r /c:"^torch==.*+%TORCH_CUDA%" "%BUILD%\requirements.txt" >nul
+if errorlevel 1 (
+    echo       FAIL  uv.lock does not pin a +%TORCH_CUDA% torch for Windows; check backend\pyproject.toml
+    goto :failed
+)
 echo       OK    %BUILD%\requirements.txt
 
 rem ---------------------------------------------------------------- 5. libs
 echo.
 echo [5/9] Installing the libraries into the release (PyTorch is the big one)
-uv pip install --python "!BUNDLED_PY!" --target "%RELEASE%\runtime\lib" -r "%BUILD%\requirements.txt"
+rem Every version is pinned, so taking each pin from whichever index has it is safe;
+rem the CUDA torch exists only on the PyTorch index.
+uv pip install --python "!BUNDLED_PY!" --target "%RELEASE%\runtime\lib" -r "%BUILD%\requirements.txt" --extra-index-url "%TORCH_INDEX%" --index-strategy unsafe-best-match
 if errorlevel 1 (
     echo       FAIL  library install failed. Check the network and run this again.
     goto :failed
@@ -124,6 +136,17 @@ if not exist "%RELEASE%\runtime\lib\fastapi" (
     goto :failed
 )
 echo       OK    release\%NAME%\runtime\lib
+
+rem The whole point of the CUDA build: prove it is one, with RTX 20 to RTX 50 kernels.
+rem This inspects the build, so it works on a build machine with no GPU.
+set "PYTHONPATH=%RELEASE%\runtime\lib"
+"!BUNDLED_PY!" "%CD%\scripts\gpu_report.py" --build
+set "ERR=!errorlevel!"
+set "PYTHONPATH="
+if not "!ERR!"=="0" (
+    echo       FAIL  the installed PyTorch cannot use NVIDIA GPUs
+    goto :failed
+)
 
 rem ---------------------------------------------------------------- 6. model
 echo.
@@ -197,6 +220,7 @@ if exist "%BUILD%\vc_redist.x64.exe" (
 >"%RELEASE%\VERSION.txt" echo Offline Semantic PDF Search %VERSION% (win64, offline)
 >>"%RELEASE%\VERSION.txt" echo Built %DATE% %TIME% on %COMPUTERNAME%
 >>"%RELEASE%\VERSION.txt" echo Python %PY_VERSION%
+>>"%RELEASE%\VERSION.txt" echo PyTorch CUDA build %TORCH_CUDA%, NVIDIA driver 580 or newer for GPU indexing
 copy /y "%BUILD%\requirements.txt" "%RELEASE%\runtime\requirements.txt" >nul
 set "BROKEN="
 for %%F in (run.bat stop.bat check.bat README-FIRST.txt .env VERSION.txt) do (

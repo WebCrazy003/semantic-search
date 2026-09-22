@@ -23,15 +23,22 @@ if not exist "%PY%" (
 )
 
 "%PY%" "scripts\verify_install.py"
-if errorlevel 1 (
-    echo.
-    echo   Something is wrong. If PyTorch failed to import, run
-    echo   runtime\vc_redist.x64.exe as administrator and try again.
-    echo.
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto :broken
 
+rem Which GPU indexing will use. No NVIDIA GPU is fine; it then runs on the CPU.
+echo.
+"%PY%" "scripts\gpu_report.py"
+goto :good
+
+:broken
+echo.
+echo   Something is wrong. If PyTorch failed to import, run
+echo   runtime\vc_redist.x64.exe as administrator and try again.
+echo.
+pause
+exit /b 1
+
+:good
 echo.
 echo   All good. Start it with run.bat
 echo.

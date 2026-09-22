@@ -18,6 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 Device = Literal["auto", "cpu", "mps", "cuda"]
 Toggle = Literal["auto", "on", "off"]
+Precision = Literal["auto", "fp32", "fp16"]
 
 
 class Settings(BaseSettings):
@@ -52,6 +53,10 @@ class Settings(BaseSettings):
     bge_model_path: Path = Path("./models/bge-m3")
     embedding_device: Device = "auto"
     embedding_batch_size: int = Field(default=8, ge=1, le=256)
+    # On an NVIDIA GPU. None (auto, or empty) sizes it from the card's memory.
+    embedding_batch_size_gpu: int | None = Field(default=None, ge=1, le=512)
+    # auto is fp16 on an NVIDIA GPU and fp32 everywhere else.
+    embedding_precision: Precision = "auto"
     embedding_max_seq_length: int = Field(default=512, ge=64, le=8192)
     allow_model_download: bool = False
 
@@ -84,6 +89,13 @@ class Settings(BaseSettings):
     @classmethod
     def _resolve(cls, value: Path) -> Path:
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()
+
+    @field_validator("embedding_batch_size_gpu", mode="before")
+    @classmethod
+    def _auto_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().lower() in ("", "auto"):
+            return None
+        return value
 
     @field_validator("qdrant_path", mode="before")
     @classmethod

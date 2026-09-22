@@ -24,6 +24,8 @@ def ready(container: Container = Depends(get_container)) -> ReadinessResponse:
     except Exception:
         points, reachable = 0, False
     dimension = int(getattr(container.embedder, "dimension", 0))
+    describe = getattr(container.embedder, "device_info", None)
+    device = describe() if callable(describe) else None
     return ReadinessResponse(
         status="ready" if reachable and dimension > 0 else "degraded",
         qdrant_reachable=reachable,
@@ -31,4 +33,10 @@ def ready(container: Container = Depends(get_container)) -> ReadinessResponse:
         points=points,
         model_loaded=dimension > 0,
         embedding_dimension=dimension,
+        embedding_device=device.device if device else None,
+        embedding_device_name=device.name if device else None,
+        embedding_precision=device.precision if device else None,
+        embedding_batch_size=device.batch_size if device else None,
+        embedding_memory_gb=device.memory_gb if device else None,
+        embedding_fallback_reason=device.fallback_reason if device else None,
     )

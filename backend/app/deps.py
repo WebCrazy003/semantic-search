@@ -100,6 +100,8 @@ def build_container(settings: Settings) -> Container:
         batch_size=settings.embedding_batch_size,
         max_seq_length=settings.embedding_max_seq_length,
         expected_dimension=settings.vector_size,
+        batch_size_gpu=settings.embedding_batch_size_gpu,
+        precision=settings.embedding_precision,
     )
     qdrant = QdrantService(
         client=build_qdrant_client(settings),

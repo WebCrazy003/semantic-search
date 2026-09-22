@@ -74,3 +74,24 @@ def test_qdrant_path_switches_to_embedded_and_resolves(tmp_path: Path) -> None:
 
     absolute = Settings(_env_file=None, qdrant_path=str(tmp_path))
     assert absolute.qdrant_path == tmp_path
+
+
+def test_gpu_settings_default_to_auto() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.embedding_batch_size_gpu is None
+    assert settings.embedding_precision == "auto"
+    assert settings.docx_enabled is True
+    assert settings.pdf_korean_midword_join == "auto"
+
+
+def test_gpu_batch_size_accepts_auto_or_a_number(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMBEDDING_BATCH_SIZE_GPU", "auto")
+    assert Settings(_env_file=None).embedding_batch_size_gpu is None
+    monkeypatch.setenv("EMBEDDING_BATCH_SIZE_GPU", "48")
+    assert Settings(_env_file=None).embedding_batch_size_gpu == 48
+
+
+def test_an_unknown_precision_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMBEDDING_PRECISION", "int4")
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)

@@ -140,6 +140,17 @@ export interface ClearResult {
   files_kept: boolean
 }
 
+export interface Readiness {
+  status: 'ready' | 'degraded'
+  model_loaded: boolean
+  embedding_device?: 'cuda' | 'mps' | 'cpu' | null
+  embedding_device_name?: string | null
+  embedding_precision?: string | null
+  embedding_batch_size?: number | null
+  embedding_memory_gb?: number | null
+  embedding_fallback_reason?: string | null
+}
+
 export interface SearchParams {
   query: string
   topK: number
@@ -167,6 +178,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail)
   }
   return body as T
+}
+
+export async function fetchReadiness(): Promise<Readiness> {
+  return call<Readiness>('/api/health/ready')
 }
 
 export async function search(params: SearchParams): Promise<SearchResponse> {

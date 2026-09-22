@@ -316,6 +316,8 @@ After each commit, `uv run --directory backend pytest`, `ruff check`, and `npm -
 
 ## 5. Changes made during implementation
 
+- **`cu130`, not `cu128`, and driver 580+, not 570+.** `download.pytorch.org/whl/cu128` does not publish the locked torch 2.14.0 for Windows; `cu126`, `cu130` and `cu132` do. `cu126` has no Blackwell kernels, so `cu130` is the oldest index that serves the RTX 5060. CUDA 13 still covers Turing (RTX 20), and needs NVIDIA driver 580 or newer. The build check reads the compiled kernel list with `torch._C._cuda_getArchFlags()`, because `torch.cuda.get_arch_list()` returns nothing on a build machine with no GPU.
+
 - **`file_type` and `pages_approximate` are derived from the filename suffix**, not stored in a new Qdrant payload field or manifest column. Same answer, and existing indexes need no migration. `pages_approximate` is false for a Word file with 0 pages (unsupported), so the UI never shows `~0`.
 - **`PDF_MIN_DOCUMENT_CHARS` was not renamed**; DOCX uses the same setting. Renaming it would touch every existing `.env` for no behaviour change.
 - **A page marker in the middle of a Word paragraph moves the page on after the paragraph**, rather than splitting the paragraph. That way no paragraph, and no word Word happened to break at, is ever cut in two. A break on a page with nothing on it yet is ignored, which also stops Word's paired hard and rendered breaks from counting twice.

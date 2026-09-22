@@ -1062,3 +1062,4 @@ ul.folders li.missing {
   color: var(--muted);
 }
 .file-type { margin: 3px 6px 0 0; padding: 0 7px; font-size: 10px; }
+.device { margin: 12px 0 0; }

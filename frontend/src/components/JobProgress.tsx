@@ -1,6 +1,7 @@
 // frontend/src/components/JobProgress.tsx
 import type { IndexStatus } from '../services/api'
 import { CountUp } from './CountUp'
+import { DeviceStatus } from './DeviceStatus'
 import { StatusBadge } from './StatusBadge'
 
 interface Props {
@@ -121,6 +122,7 @@ export function JobProgress({ status, busy, onIndex }: Props) {
           ))}
         </ul>
       ) : null}
+      <DeviceStatus />
     </section>
   )
 }

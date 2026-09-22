@@ -20,6 +20,13 @@ class ReadinessResponse(BaseModel):
     points: int
     model_loaded: bool
     embedding_dimension: int
+    embedding_device: str | None = None  # "cuda", "mps" or "cpu"
+    embedding_device_name: str | None = None  # "NVIDIA GeForce RTX 5060"
+    embedding_precision: str | None = None
+    embedding_batch_size: int | None = None
+    embedding_memory_gb: float | None = None
+    # Why indexing is not on the GPU, when a GPU exists but could not be used.
+    embedding_fallback_reason: str | None = None
 
 
 class SearchHit(BaseModel):
