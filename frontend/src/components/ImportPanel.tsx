@@ -27,15 +27,15 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
 
   return (
     <section className="panel">
-      <h2>Import single PDFs</h2>
+      <h2>Import PDF or Word files</h2>
 
       <div className="import-row">
         <input
           ref={input}
           type="file"
-          accept="application/pdf,.pdf"
+          accept={ACCEPTED}
           multiple
-          aria-label="PDF files to import"
+          aria-label="PDF or Word files to import"
           onChange={(event) => pick(event.target.files)}
         />
         <button type="button" onClick={submit} disabled={blocked || chosen.length === 0}>
@@ -58,7 +58,7 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
       ) : (
         <p className="hint">
           Importing <strong>copies</strong> the files into the documents folder and then runs a
-          job. Use it for one-off files; for a folder you already keep PDFs in, add it above
+          job. Use it for one-off files; for a folder you already keep documents in, add it above
           instead and nothing is copied.
         </p>
       )}
@@ -84,11 +84,12 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
       ) : null}
 
       <details className="limits">
-        <summary>Which PDFs can be searched</summary>
+        <summary>Which files can be searched</summary>
         <div className="limits-body">
           <p className="works">Works</p>
           <ul>
             <li>PDFs whose text can be selected and copied in a PDF reader</li>
+            <li>Word documents saved as .docx</li>
             <li>Chinese, Korean, English, and documents that mix them</li>
             <li>Tables, which are kept whole with their header row</li>
             <li>Files up to 200 MB each; several can be imported at once</li>
@@ -96,7 +97,8 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
           <p className="works">Not supported in this version</p>
           <ul>
             <li>Scanned pages and photographs of pages, where the text is an image</li>
-            <li>Password-protected PDFs</li>
+            <li>Password-protected PDFs and Word files</li>
+            <li>Old Word files (.doc); open them in Word and save as .docx first</li>
             <li>Damaged files</li>
           </ul>
           <p className="hint">
@@ -108,6 +110,13 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
     </section>
   )
 }
+
+const ACCEPTED = [
+  'application/pdf',
+  '.pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.docx',
+].join(',')
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

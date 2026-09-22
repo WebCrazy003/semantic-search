@@ -95,3 +95,13 @@ def wrap_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     directory = tmp_path_factory.mktemp("wrapping")
     build_wrapping(directory)
     return directory
+
+
+@pytest.fixture(scope="session")
+def docx_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Word documents covering headings, tables, tracked changes and page markers."""
+    from tests.fixtures.make_fixtures import build_word_documents
+
+    directory = tmp_path_factory.mktemp("word")
+    build_word_documents(directory)
+    return directory

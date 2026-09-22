@@ -44,7 +44,7 @@ export function DocumentsPage({ library }: Props) {
       />
 
       <p className="hint">
-        Remove takes a document out of the search index. The PDF stays in the documents folder,
+        Remove takes a document out of the search index. The file stays in the documents folder,
         so the next indexing job picks it up again.
       </p>
     </section>

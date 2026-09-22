@@ -314,7 +314,14 @@ torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
 
 After each commit, `uv run --directory backend pytest`, `ruff check`, and `npm --prefix frontend test` all pass. Commits 1 and 4 include the before and after numbers from the eval harness.
 
-## 5. Decisions (2026-09-22)
+## 5. Changes made during implementation
+
+- **`file_type` and `pages_approximate` are derived from the filename suffix**, not stored in a new Qdrant payload field or manifest column. Same answer, and existing indexes need no migration. `pages_approximate` is false for a Word file with 0 pages (unsupported), so the UI never shows `~0`.
+- **`PDF_MIN_DOCUMENT_CHARS` was not renamed**; DOCX uses the same setting. Renaming it would touch every existing `.env` for no behaviour change.
+- **A page marker in the middle of a Word paragraph moves the page on after the paragraph**, rather than splitting the paragraph. That way no paragraph, and no word Word happened to break at, is ever cut in two. A break on a page with nothing on it yet is ignored, which also stops Word's paired hard and rendered breaks from counting twice.
+- **One-row Word tables** are treated as layout and indexed as paragraphs.
+
+## 6. Decisions (2026-09-22)
 
 1. **GPUs:** NVIDIA RTX 20 through RTX 50-series, with the RTX 5060 as the primary test card; later cards on a best-effort basis. `cu128`, driver 570 or newer (§3.2).
 2. **Release:** one release with CUDA PyTorch, about 5.5 GB, which falls back to CPU on machines without a supported GPU (§3.2).

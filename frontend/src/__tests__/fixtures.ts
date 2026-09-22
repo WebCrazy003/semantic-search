@@ -82,7 +82,7 @@ export function makeFolder(overrides: Partial<FolderSummary> = {}): FolderSummar
     added_at: '2026-09-20T12:00:00Z',
     exists: true,
     readable: true,
-    pdf_count: 12,
+    document_count: 12,
     indexed_documents: 12,
     is_default: false,
     ...overrides,

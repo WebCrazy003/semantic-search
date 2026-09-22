@@ -33,7 +33,6 @@ logger = get_logger("indexing")
 
 _MAX_FAILURES_KEPT = 50
 _EMBED_SLICE = 256  # bounds peak memory on very large documents
-_IGNORED_PREFIXES = (".", "._")
 
 
 def _now() -> datetime:
@@ -222,8 +221,6 @@ class IndexingService:
             for path in directory.rglob("*")
             if path.is_file()
             and self._extractors.supports(path)
-            and not path.name.startswith(_IGNORED_PREFIXES)
-            and "__MACOSX" not in path.parts
         ]
         return sorted(found)
 

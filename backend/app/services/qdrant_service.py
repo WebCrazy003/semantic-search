@@ -19,6 +19,7 @@ from app.logging_config import get_logger
 from app.models.domain import Chunk, DocumentMeta
 from app.models.request_models import SearchFilters
 from app.models.response_models import SearchHit
+from app.services.extractors import file_type_for
 
 logger = get_logger("qdrant")
 
@@ -216,6 +217,7 @@ class QdrantService:
             chunk_index=int(payload.get("chunk_index", 0)),
             heading=payload.get("heading"),
             language=payload.get("language"),
+            file_type=file_type_for(str(payload.get("filename", ""))),
             text=str(payload.get("text", "")),
         )
 

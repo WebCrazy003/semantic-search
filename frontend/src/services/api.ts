@@ -12,8 +12,12 @@ export interface SearchHit {
   chunk_index: number
   heading?: string | null
   language?: string | null
+  file_type?: FileType
   text: string
 }
+
+/** 'docx' pages are Word's last layout, so they are shown as approximate. */
+export type FileType = 'pdf' | 'docx'
 
 export interface SearchResponse {
   query: string
@@ -72,6 +76,8 @@ export interface DocumentSummary {
   title?: string | null
   status: string
   indexed_at?: string | null
+  file_type?: FileType
+  pages_approximate?: boolean
 }
 
 export interface JobSummary {
@@ -97,7 +103,9 @@ export interface FolderSummary {
   added_at: string
   exists: boolean
   readable: boolean
-  pdf_count: number
+  document_count: number
+  /** Deprecated: PDFs only. Use document_count. */
+  pdf_count?: number
   indexed_documents: number
   is_default: boolean
 }

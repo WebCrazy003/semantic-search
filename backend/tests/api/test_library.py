@@ -49,7 +49,55 @@ class TestUpload:
         )
         body = response.json()
         assert body["saved"] == []
-        assert body["rejected"][0]["reason"] == "not a .pdf file"
+        assert body["rejected"][0]["reason"] == "not a PDF or Word (.docx) file"
+
+    def test_a_word_file_is_stored(self, client: TestClient, docx_dir: Path, container) -> None:
+        payload = (docx_dir / "manual_ko.docx").read_bytes()
+        response = client.post(
+            "/api/documents/upload",
+            files=[("files", ("manual.docx", payload, "application/octet-stream"))],
+        )
+        assert response.json()["saved"] == ["manual.docx"]
+        assert (container.settings.pdf_directory / "manual.docx").exists()
+
+    def test_a_docx_extension_without_word_content_is_rejected(
+        self, client: TestClient
+    ) -> None:
+        response = client.post(
+            "/api/documents/upload",
+            files=[("files", ("fake.docx", b"not really a zip", "application/octet-stream"))],
+        )
+        assert response.json()["rejected"][0]["reason"] == "not a Word .docx file (bad header)"
+
+    def test_a_zip_that_is_not_a_word_file_is_rejected(self, client: TestClient) -> None:
+        import io
+        import zipfile
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("hello.txt", "hi")
+        response = client.post(
+            "/api/documents/upload",
+            files=[("files", ("x.docx", buffer.getvalue(), "application/octet-stream"))],
+        )
+        assert "no document inside" in response.json()["rejected"][0]["reason"]
+
+    def test_an_encrypted_or_legacy_word_file_is_rejected(
+        self, client: TestClient, docx_dir: Path
+    ) -> None:
+        payload = (docx_dir / "locked.docx").read_bytes()
+        response = client.post(
+            "/api/documents/upload",
+            files=[("files", ("locked.docx", payload, "application/octet-stream"))],
+        )
+        assert "password-protected" in response.json()["rejected"][0]["reason"]
+
+    def test_a_legacy_doc_is_rejected_by_extension(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/documents/upload",
+            files=[("files", ("old.doc", b"\xd0\xcf\x11\xe0", "application/msword"))],
+        )
+        assert response.json()["rejected"][0]["reason"] == "not a PDF or Word (.docx) file"
 
     def test_a_pdf_extension_without_pdf_content_is_rejected(self, client: TestClient) -> None:
         response = client.post(
@@ -285,6 +333,35 @@ class TestOpeningTheSourceFile:
         assert response.headers["content-type"] == "application/pdf"
         assert "inline" in response.headers["content-disposition"]
         assert response.content.startswith(b"%PDF-")
+
+    def test_an_indexed_word_file_downloads(
+        self, client: TestClient, container, docx_dir: Path
+    ) -> None:
+        import shutil
+
+        shutil.copy(docx_dir / "manual_ko.docx", container.settings.pdf_directory)
+        _index(client)
+        document = next(
+            d for d in client.get("/api/documents").json() if d["filename"] == "manual_ko.docx"
+        )
+        assert document["file_type"] == "docx"
+        assert document["pages_approximate"] is True
+
+        response = client.get(f"/api/documents/{document['document_id']}/file")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
+        assert "attachment" in response.headers["content-disposition"]
+        assert response.content.startswith(b"PK")
+
+    def test_a_pdf_is_listed_with_exact_pages(self, client: TestClient) -> None:
+        _index(client)
+        document = next(
+            d for d in client.get("/api/documents").json() if d["filename"] == "manual_zh.pdf"
+        )
+        assert document["file_type"] == "pdf"
+        assert document["pages_approximate"] is False
 
     def test_an_unknown_document_is_a_404(self, client: TestClient) -> None:
         assert client.get(f"/api/documents/{'f' * 64}/file").status_code == 404

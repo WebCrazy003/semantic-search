@@ -30,10 +30,12 @@ function snippet(text: string): string {
   return (cut > 0 ? text.slice(0, cut) : text.slice(0, SNIPPET_CHARS).trimEnd()) + '…'
 }
 
+// A Word file has no fixed pages; its numbers come from Word's last layout.
 function pageLabel(hit: SearchHit): string {
+  const about = hit.file_type === 'docx' ? '~' : ''
   return hit.page_start === hit.page_end
-    ? `Page ${hit.page_start}`
-    : `Pages ${hit.page_start} to ${hit.page_end}`
+    ? `Page ${about}${hit.page_start}`
+    : `Pages ${about}${hit.page_start} to ${about}${hit.page_end}`
 }
 
 export function SearchResult({ hit, query }: Props) {
@@ -77,14 +79,21 @@ export function SearchResult({ hit, query }: Props) {
           </button>
         ) : null}
 
-        <a
-          className="open-source"
-          href={documentFileUrl(hit.document_id, hit.page_start)}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Open {pageLabel(hit).toLowerCase()} in the PDF ↗
-        </a>
+        {hit.file_type === 'docx' ? (
+          // Browsers cannot show a .docx, so it downloads and opens in Word.
+          <a className="open-source" href={documentFileUrl(hit.document_id)} download>
+            Download the Word file ↓
+          </a>
+        ) : (
+          <a
+            className="open-source"
+            href={documentFileUrl(hit.document_id, hit.page_start)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open {pageLabel(hit).toLowerCase()} in the PDF ↗
+          </a>
+        )}
 
         <span className="result-path" title={hit.filepath}>
           {hit.filepath}

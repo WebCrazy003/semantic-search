@@ -15,8 +15,9 @@ from qdrant_client import QdrantClient
 from app.config import Settings
 from app.logging_config import get_logger
 from app.services.chunk_service import ChunkConfig, Chunker
+from app.services.docx_service import DocxService
 from app.services.embedding_service import BgeEmbeddingService, EmbeddingService
-from app.services.extractors import ExtractorRegistry
+from app.services.extractors import DocumentExtractor, ExtractorRegistry
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
 from app.services.pdf_service import PdfService
@@ -73,15 +74,21 @@ def build_qdrant_client(settings: Settings) -> QdrantClient:
 
 def build_extractors(settings: Settings) -> ExtractorRegistry:
     """One extractor per supported format, configured from the settings."""
-    return ExtractorRegistry(
-        [
-            PdfService(
+    extractors: list[DocumentExtractor] = [
+        PdfService(
+            min_document_chars=settings.pdf_min_document_chars,
+            extract_tables=settings.pdf_extract_tables,
+            korean_midword_join=settings.pdf_korean_midword_join,
+        )
+    ]
+    if settings.docx_enabled:
+        extractors.append(
+            DocxService(
                 min_document_chars=settings.pdf_min_document_chars,
                 extract_tables=settings.pdf_extract_tables,
-                korean_midword_join=settings.pdf_korean_midword_join,
             )
-        ]
-    )
+        )
+    return ExtractorRegistry(extractors)
 
 
 def build_container(settings: Settings) -> Container:

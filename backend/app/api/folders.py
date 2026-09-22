@@ -3,7 +3,7 @@
 
 A browser file picker only hands over bytes, never a path, so importing copies files
 into the documents folder. Registering a folder is the other way round: nothing is
-copied, the PDFs stay where they are, and the index records their real locations.
+copied, the documents stay where they are, and the index records their real locations.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from app.deps import Container, get_container
 from app.logging_config import get_logger
 from app.models.request_models import AddFolderRequest
 from app.models.response_models import FolderSummary, RemovedFolderResponse
+from app.services.extractors import is_candidate
 
 logger = get_logger("api.folders")
 router = APIRouter(tags=["folders"])
@@ -27,9 +28,11 @@ def list_folders(container: Container = Depends(get_container)) -> list[FolderSu
     records = container.manifest.folders()
     documents = container.manifest.all_documents()
 
-    summaries = [_summarise(default, None, documents, is_default=True)]
+    suffixes = container.extractors.suffixes
+    summaries = [_summarise(default, None, documents, suffixes, is_default=True)]
     summaries.extend(
-        _summarise(Path(record.path), record.added_at, documents) for record in records
+        _summarise(Path(record.path), record.added_at, documents, suffixes)
+        for record in records
     )
     return summaries
 
@@ -39,7 +42,7 @@ def add_folder(
     request: AddFolderRequest,
     container: Container = Depends(get_container),
 ) -> FolderSummary:
-    """Register a folder. Its PDFs are indexed where they are on the next run."""
+    """Register a folder. Its documents are indexed where they are on the next run."""
     if container.indexing.is_running:
         raise HTTPException(status_code=409, detail="An indexing run is in progress")
 
@@ -68,7 +71,12 @@ def add_folder(
 
     record = container.manifest.add_folder(path)
     logger.info("registered folder %s", path)
-    return _summarise(path, record.added_at, container.manifest.all_documents())
+    return _summarise(
+        path,
+        record.added_at,
+        container.manifest.all_documents(),
+        container.extractors.suffixes,
+    )
 
 
 @router.delete("/folders", response_model=RemovedFolderResponse)
@@ -103,14 +111,18 @@ def _within(path: Path, folder: Path) -> bool:
         return False
 
 
-def _summarise(path, added_at, documents, is_default: bool = False) -> FolderSummary:
+def _summarise(
+    path, added_at, documents, suffixes: frozenset[str], is_default: bool = False
+) -> FolderSummary:
     readable = path.is_dir()
+    counts = _count_documents(path, suffixes) if readable else {}
     return FolderSummary(
         path=str(path),
         added_at=added_at or _oldest(documents),
         exists=path.exists(),
         readable=readable,
-        pdf_count=_count_pdfs(path) if readable else 0,
+        document_count=sum(counts.values()),
+        pdf_count=counts.get(".pdf", 0),
         indexed_documents=sum(
             1
             for document in documents
@@ -120,17 +132,17 @@ def _summarise(path, added_at, documents, is_default: bool = False) -> FolderSum
     )
 
 
-def _count_pdfs(path: Path) -> int:
+def _count_documents(path: Path, suffixes: frozenset[str]) -> dict[str, int]:
+    """Supported files on disk, by suffix, counted the way indexing discovers them."""
+    counts: dict[str, int] = {}
     try:
-        return sum(
-            1
-            for candidate in path.rglob("*")
-            if candidate.is_file()
-            and candidate.suffix.lower() == ".pdf"
-            and not candidate.name.startswith(".")
-        )
+        for candidate in path.rglob("*"):
+            suffix = candidate.suffix.lower()
+            if suffix in suffixes and candidate.is_file() and is_candidate(candidate):
+                counts[suffix] = counts.get(suffix, 0) + 1
     except OSError:
-        return 0
+        return counts
+    return counts
 
 
 def _oldest(documents) -> object:

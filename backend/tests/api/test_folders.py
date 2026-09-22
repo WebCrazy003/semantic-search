@@ -64,6 +64,19 @@ class TestRegistering:
         body = response.json()
         assert body["path"] == str(outside)
         assert body["pdf_count"] == 2  # counted through subfolders
+        assert body["document_count"] == 2
+
+    def test_word_files_are_counted_and_lock_files_are_not(
+        self, client: TestClient, tmp_path, docx_dir
+    ) -> None:
+        import shutil
+
+        outside = _elsewhere(tmp_path)
+        shutil.copy(docx_dir / "manual_ko.docx", outside / "manual_ko.docx")
+        (outside / "~$manual_ko.docx").write_bytes(b"lock")
+        body = client.post("/api/folders", json={"path": str(outside)}).json()
+        assert body["document_count"] == 3
+        assert body["pdf_count"] == 2
         assert body["is_default"] is False
 
     def test_it_survives_a_restart(self, client: TestClient, container, tmp_path) -> None:

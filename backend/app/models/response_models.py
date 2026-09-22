@@ -32,6 +32,7 @@ class SearchHit(BaseModel):
     chunk_index: int
     heading: str | None = None
     language: str | None = None
+    file_type: str = "pdf"  # "pdf" or "docx"
     text: str
 
 
@@ -92,6 +93,9 @@ class DocumentSummary(BaseModel):
     error_message: str | None = None
     alt_filepaths: list[str] = []
     indexed_at: datetime | None = None
+    file_type: str = "pdf"  # "pdf" or "docx"
+    # A .docx has no fixed pages; its page numbers are Word's last layout, or 1.
+    pages_approximate: bool = False
 
 
 class JobSummary(BaseModel):
@@ -130,7 +134,8 @@ class FolderSummary(BaseModel):
     added_at: datetime
     exists: bool
     readable: bool
-    pdf_count: int = 0
+    document_count: int = 0  # every supported file on disk, subfolders included
+    pdf_count: int = 0  # deprecated: PDFs only, kept for one release
     indexed_documents: int = 0
     is_default: bool = False
 

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # Whether a Korean line that ends without a trailing space broke inside a word.
     # auto decides per document from the evidence; on and off force it.
     pdf_korean_midword_join: Toggle = "auto"
+    # Word .docx files are indexed alongside PDFs. Legacy .doc is not supported.
+    docx_enabled: bool = True
 
     # Qdrant
     qdrant_url: str = "http://127.0.0.1:6333"

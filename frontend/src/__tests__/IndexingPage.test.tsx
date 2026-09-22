@@ -18,7 +18,7 @@ describe('importing PDFs', () => {
     const library = makeLibrary()
     render(<IndexingPage library={library} />)
 
-    await userEvent.upload(screen.getByLabelText(/pdf files to import/i), [
+    await userEvent.upload(screen.getByLabelText(/pdf or word files to import/i), [
       pdf('one.pdf'),
       pdf('two.pdf'),
     ])
@@ -36,7 +36,7 @@ describe('importing PDFs', () => {
 
   it('lists the chosen files before importing', async () => {
     render(<IndexingPage library={makeLibrary()} />)
-    await userEvent.upload(screen.getByLabelText(/pdf files to import/i), [pdf('manual.pdf')])
+    await userEvent.upload(screen.getByLabelText(/pdf or word files to import/i), [pdf('manual.pdf')])
     expect(screen.getByText(/manual.pdf/)).toBeInTheDocument()
   })
 
@@ -53,17 +53,26 @@ describe('importing PDFs', () => {
     expect(screen.getByText(/not a .pdf file/i)).toBeInTheDocument()
   })
 
-  it('states which PDFs can be searched', () => {
+  it('states which files can be searched', () => {
     render(<IndexingPage library={makeLibrary()} />)
-    expect(screen.getByText(/which pdfs can be searched/i)).toBeInTheDocument()
+    expect(screen.getByText(/which files can be searched/i)).toBeInTheDocument()
+    expect(screen.getByText(/word documents saved as .docx/i)).toBeInTheDocument()
     expect(screen.getByText(/scanned pages and photographs/i)).toBeInTheDocument()
-    expect(screen.getByText(/password-protected pdfs/i)).toBeInTheDocument()
+    expect(screen.getByText(/password-protected pdfs and word files/i)).toBeInTheDocument()
+    expect(screen.getByText(/old word files \(.doc\)/i)).toBeInTheDocument()
+  })
+
+  it('accepts PDF and Word files', () => {
+    render(<IndexingPage library={makeLibrary()} />)
+    const accept = screen.getByLabelText(/pdf or word files to import/i).getAttribute('accept')
+    expect(accept).toContain('.pdf')
+    expect(accept).toContain('.docx')
   })
 
   it('blocks importing while a job runs, so only one job exists at a time', async () => {
     const library = makeLibrary({ status: makeStatus({ status: 'running' }) })
     render(<IndexingPage library={library} />)
-    await userEvent.upload(screen.getByLabelText(/pdf files to import/i), [pdf('one.pdf')])
+    await userEvent.upload(screen.getByLabelText(/pdf or word files to import/i), [pdf('one.pdf')])
     expect(screen.getByRole('button', { name: /import and index/i })).toBeDisabled()
     expect(screen.getByText(/a job is running/i)).toBeInTheDocument()
   })
@@ -199,9 +208,9 @@ describe('clearing the index', () => {
     expect(library.clearAll).not.toHaveBeenCalled()
   })
 
-  it('promises that the PDF files are kept', () => {
+  it('promises that the files are kept', () => {
     render(<IndexingPage library={makeLibrary()} />)
-    expect(screen.getByText(/your pdfs stay in the documents folder/i)).toBeInTheDocument()
+    expect(screen.getByText(/your files stay in the documents folder/i)).toBeInTheDocument()
   })
 
   it('reports what the clear removed', () => {

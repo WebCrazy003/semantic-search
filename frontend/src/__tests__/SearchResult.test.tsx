@@ -161,4 +161,17 @@ describe('opening the source PDF', () => {
     render(<SearchResult hit={hit} />)
     expect(screen.getByText('/documents/manual_zh.pdf')).toBeInTheDocument()
   })
+
+  it('marks the pages of a Word file as approximate', () => {
+    render(<SearchResult hit={{ ...hit, file_type: 'docx', page_start: 3, page_end: 3 }} />)
+    expect(screen.getByText('Page ~3')).toBeInTheDocument()
+  })
+
+  it('offers a Word file as a download, without a page anchor', () => {
+    render(<SearchResult hit={{ ...hit, file_type: 'docx', page_start: 3, page_end: 3 }} />)
+    const link = screen.getByRole('link', { name: /download the word file/i })
+    expect(link).toHaveAttribute('href', '/api/documents/abc123/file')
+    expect(link).toHaveAttribute('download')
+    expect(screen.queryByRole('link', { name: /in the pdf/i })).not.toBeInTheDocument()
+  })
 })

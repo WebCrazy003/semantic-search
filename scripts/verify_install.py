@@ -20,6 +20,7 @@ REQUIRED_IMPORTS = [
     ("fastapi", "FastAPI"),
     ("uvicorn", "Uvicorn"),
     ("pymupdf", "PyMuPDF"),
+    ("docx", "python-docx"),
     ("qdrant_client", "Qdrant client"),
     ("sentence_transformers", "sentence-transformers"),
 ]

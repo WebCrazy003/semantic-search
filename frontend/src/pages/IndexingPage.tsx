@@ -44,7 +44,7 @@ export function IndexingPage({ library }: Props) {
       <section className="panel danger">
         <h2>Clear the index</h2>
         <p className="hint">
-          Removes every passage and every document record. Your PDFs stay in the documents
+          Removes every passage and every document record. Your files stay in the documents
           folder and the job history is kept, so you can index again from scratch.
         </p>
         {confirming ? (
@@ -81,7 +81,7 @@ export function IndexingPage({ library }: Props) {
         {library.lastClear ? (
           <p className="hint">
             Cleared {library.lastClear.documents_removed} documents and{' '}
-            {library.lastClear.passages_removed} passages. The PDF files were kept.
+            {library.lastClear.passages_removed} passages. The files themselves were kept.
           </p>
         ) : null}
       </section>

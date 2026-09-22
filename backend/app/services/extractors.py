@@ -15,6 +15,19 @@ from typing import Protocol, runtime_checkable
 from app.models.domain import ExtractedDocument
 
 _HASH_BLOCK = 1024 * 1024
+# Hidden files, macOS resource forks, and the ~$name.docx lock file Word keeps
+# beside a document while it is open.
+IGNORED_PREFIXES = (".", "~$")
+
+
+def file_type_for(filename: str) -> str:
+    """The file type, "pdf" or "docx", from the name; search hits record nothing else."""
+    return Path(filename).suffix.lower().lstrip(".") or "pdf"
+
+
+def is_candidate(path: Path) -> bool:
+    """A file the library would look at, whatever its format."""
+    return not path.name.startswith(IGNORED_PREFIXES) and "__MACOSX" not in path.parts
 
 
 class ExtractionUnsupportedError(Exception):
@@ -66,10 +79,14 @@ class ExtractorRegistry:
         return frozenset(self._by_suffix)
 
     def supports(self, path: Path) -> bool:
-        return path.suffix.lower() in self._by_suffix
+        return path.suffix.lower() in self._by_suffix and is_candidate(path)
 
     def for_path(self, path: Path) -> DocumentExtractor | None:
         return self._by_suffix.get(path.suffix.lower())
+
+    def media_type_for(self, path: Path) -> str:
+        extractor = self.for_path(path)
+        return extractor.media_type if extractor else "application/octet-stream"
 
     @staticmethod
     def compute_file_hash(path: Path) -> str:

@@ -41,8 +41,8 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
   if (documents.length === 0) {
     return (
       <p className="hint empty">
-        No documents indexed yet. Import PDFs on the Indexing tab, or put them in the documents
-        folder and run a job.
+        No documents indexed yet. Import PDF or Word files on the Indexing tab, or put them in
+        the documents folder and run a job.
       </p>
     )
   }
@@ -95,9 +95,12 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      {document.filename} ↗
+                      {document.filename} {document.file_type === 'docx' ? '↓' : '↗'}
                     </a>
                   )}
+                  {document.file_type === 'docx' ? (
+                    <span className="badge subtle file-type">DOCX</span>
+                  ) : null}
                   {document.title ? <span className="doc-title">{document.title}</span> : null}
                   {document.error_message ? (
                     <span className="doc-error">{document.error_message}</span>
@@ -110,7 +113,16 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
                   ) : null}
                 </td>
                 <td className="numeric">{formatSize(document.file_size)}</td>
-                <td className="numeric">{document.pages}</td>
+                <td
+                  className="numeric"
+                  title={
+                    document.pages_approximate
+                      ? 'Approximate: a Word file has no fixed pages'
+                      : undefined
+                  }
+                >
+                  {document.pages_approximate ? `~${document.pages}` : document.pages}
+                </td>
                 <td className="numeric">{document.chunks}</td>
                 <td>{document.language ?? '-'}</td>
                 <td>

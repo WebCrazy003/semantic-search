@@ -29,6 +29,24 @@ describe('DocumentsPage', () => {
     expect(within(row).getByText('2.3 MB')).toBeInTheDocument()
   })
 
+  it('labels a Word file and marks its page count as approximate', () => {
+    const library = makeLibrary({
+      documents: [
+        makeDocument({
+          filename: 'manual_ko.docx',
+          file_type: 'docx',
+          pages: 7,
+          pages_approximate: true,
+        }),
+      ],
+    })
+    render(<DocumentsPage library={library} />)
+
+    const row = within(screen.getByRole('table')).getAllByRole('row')[1]
+    expect(within(row).getByText('DOCX')).toBeInTheDocument()
+    expect(within(row).getByText('~7')).toBeInTheDocument()
+  })
+
   it('shows why an unsupported document is not searchable', () => {
     const library = makeLibrary({
       documents: [
@@ -86,7 +104,7 @@ describe('DocumentsPage', () => {
 
   it('says that removing keeps the file on disk', () => {
     render(<DocumentsPage library={makeLibrary({ documents: [makeDocument()] })} />)
-    expect(screen.getByText(/the pdf stays in the documents folder/i)).toBeInTheDocument()
+    expect(screen.getByText(/the file stays in the documents folder/i)).toBeInTheDocument()
   })
 
   it('disables removal while a job is running', () => {

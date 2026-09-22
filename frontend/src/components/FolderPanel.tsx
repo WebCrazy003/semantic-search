@@ -25,7 +25,7 @@ export function FolderPanel({ folders, busy, running, onAdd, onRemove }: Props) 
 
       <p className="hint">
         A folder is read where it is. Nothing is copied, and the index stores the real path of
-        every PDF, including the ones in subfolders.
+        every PDF and Word file, including the ones in subfolders.
       </p>
 
       <div className="folder-row">
@@ -63,7 +63,8 @@ export function FolderPanel({ folders, busy, running, onAdd, onRemove }: Props) 
                 {folder.is_default ? <span className="badge subtle">default</span> : null}
                 {folder.readable ? (
                   <>
-                    {folder.pdf_count} PDF{folder.pdf_count === 1 ? '' : 's'} on disk ·{' '}
+                    {folder.document_count} document{folder.document_count === 1 ? '' : 's'} on
+                    disk ·{' '}
                     {folder.indexed_documents} indexed
                   </>
                 ) : (

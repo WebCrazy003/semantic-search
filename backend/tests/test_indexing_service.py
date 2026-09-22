@@ -426,3 +426,44 @@ class TestLiveProgress:
 
         assert progress
         assert max(progress) == 1.0
+
+
+class TestWordDocuments:
+    @pytest.fixture
+    def mixed_indexer(
+        self, qdrant: QdrantService, manifest: ManifestService, tmp_path: Path, docx_dir: Path,
+        corpus_dir: Path,
+    ) -> tuple[IndexingService, Path]:
+        from app.services.docx_service import DocxService
+
+        folder = tmp_path / "mixed"
+        folder.mkdir()
+        shutil.copy(corpus_dir / "manual_zh.pdf", folder)
+        shutil.copy(docx_dir / "manual_ko.docx", folder)
+        shutil.copy(docx_dir / "locked.docx", folder)
+        (folder / "~$manual_ko.docx").write_bytes(b"Word's lock file")
+        (folder / "notes.doc").write_bytes(b"legacy")
+        indexer = IndexingService(
+            extractors=ExtractorRegistry([PdfService(), DocxService()]),
+            chunker=Chunker(tokenizer=CharTokenCounter(), config=ChunkConfig()),
+            embedder=FakeEmbeddingService(dimension=DIMENSION),
+            qdrant=qdrant,
+            manifest=manifest,
+            default_directory=folder,
+        )
+        return indexer, folder
+
+    def test_pdf_and_docx_are_indexed_together(
+        self, mixed_indexer: tuple[IndexingService, Path], manifest: ManifestService
+    ) -> None:
+        indexer, folder = mixed_indexer
+        assert indexer.start(folder)
+        indexer.run(folder)
+        status = indexer.snapshot()
+        assert status.total_documents == 3  # the lock file and the .doc are not found
+        assert status.indexed_documents == 2
+        assert status.unsupported_documents == 1
+        by_name = {record.filename: record for record in manifest.all_documents()}
+        assert by_name["manual_ko.docx"].status == "indexed"
+        assert by_name["manual_ko.docx"].pages == 2
+        assert by_name["locked.docx"].status == "unsupported"

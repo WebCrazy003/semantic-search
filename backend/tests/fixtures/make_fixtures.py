@@ -277,6 +277,132 @@ def build_wrapping(directory: Path) -> list[Path]:
     ]
 
 
+# ---------------------------------------------------------------- Word documents
+
+_W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _raw_paragraph(document: object, inner_xml: str) -> None:
+    """Append a paragraph written as raw WordprocessingML."""
+    from docx.oxml import parse_xml
+
+    body = document.element.body  # type: ignore[attr-defined]
+    body.insert(len(body) - 1, parse_xml(f"<w:p {_W_NS}>{inner_xml}</w:p>"))  # before sectPr
+
+
+def build_docx_korean(path: Path) -> Path:
+    """Two chapters on two pages. The second heading uses a style whose display name
+    is Korean, as Korean Word writes it; only its outline level says it is a heading."""
+    import docx
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.oxml import parse_xml
+
+    document = docx.Document()
+    document.core_properties.title = "장비 사용 설명서"
+    localized = document.styles.add_style("제목 1", WD_STYLE_TYPE.PARAGRAPH)
+    localized.element.get_or_add_pPr().append(parse_xml(f'<w:outlineLvl {_W_NS} w:val="0"/>'))
+
+    first_heading, first_paragraphs = _KOREAN_PAGES[0]
+    document.add_heading(first_heading, level=1)
+    for paragraph in first_paragraphs:
+        document.add_paragraph(paragraph)
+    document.add_page_break()
+    second_heading, second_paragraphs = _KOREAN_PAGES[1]
+    document.add_paragraph(second_heading, style="제목 1")
+    for paragraph in second_paragraphs:
+        document.add_paragraph(paragraph)
+    document.save(path)
+    return path
+
+
+def build_docx_chinese_table(path: Path) -> Path:
+    """A heading, a paragraph with Word's special hyphens and a line break, and a
+    table with a vertically merged cell."""
+    import docx
+
+    document = docx.Document()
+    heading, paragraphs = _CHINESE_PAGES[1]
+    document.add_heading(heading, level=1)
+    document.add_paragraph(paragraphs[0])
+    _raw_paragraph(
+        document,
+        "<w:r><w:t>Replace the main</w:t><w:softHyphen/><w:t>tenance kit, model XJ</w:t>"
+        "<w:noBreakHyphen/><w:t>200B.</w:t><w:br/><w:t>更换滤芯</w:t><w:br/>"
+        "<w:t>之前必须关闭电源。</w:t></w:r>",
+    )
+    table = document.add_table(rows=len(_TABLE_ROWS), cols=3)
+    for row_index, row in enumerate(_TABLE_ROWS):
+        for column_index, text in enumerate(row):
+            table.cell(row_index, column_index).text = text
+    merged = table.cell(2, 1).merge(table.cell(3, 1))
+    merged.text = "每年 / 매년"
+    document.save(path)
+    return path
+
+
+def build_docx_tracked(path: Path) -> Path:
+    """Tracked changes, a content control, and pages known only from the
+    w:lastRenderedPageBreak markers Word writes when it saves."""
+    import docx
+
+    document = docx.Document()
+    _raw_paragraph(
+        document,
+        "<w:r><w:t xml:space=\"preserve\">The pump runs </w:t></w:r>"
+        '<w:ins w:id="1" w:author="a" w:date="2026-09-01T00:00:00Z">'
+        "<w:r><w:t xml:space=\"preserve\">quietly </w:t></w:r></w:ins>"
+        '<w:del w:id="2" w:author="a" w:date="2026-09-01T00:00:00Z">'
+        "<w:r><w:delText xml:space=\"preserve\">loudly </w:delText></w:r></w:del>"
+        "<w:r><w:t>at full load.</w:t></w:r>",
+    )
+    _raw_paragraph(
+        document,
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+        "<w:r><w:t>Check the pressure gauge every week.</w:t></w:r>",
+    )
+    body = document.element.body
+    from docx.oxml import parse_xml
+
+    body.insert(
+        len(body) - 1,
+        parse_xml(
+            f"<w:sdt {_W_NS}><w:sdtContent><w:p><w:r><w:t>Warranty terms are inside a "
+            "content control.</w:t></w:r></w:p></w:sdtContent></w:sdt>"
+        ),
+    )
+    _raw_paragraph(
+        document,
+        "<w:r><w:lastRenderedPageBreak/><w:t>Page two starts with this paragraph.</w:t></w:r>",
+    )
+    _raw_paragraph(
+        document,
+        "<w:r><w:t xml:space=\"preserve\">This paragraph straddles </w:t>"
+        "<w:lastRenderedPageBreak/><w:t>the second page break.</w:t></w:r>",
+    )
+    _raw_paragraph(document, "<w:r><w:t>Page three holds the last paragraph.</w:t></w:r>")
+    document.save(path)
+    return path
+
+
+def build_docx_encrypted_stand_in(path: Path) -> Path:
+    """An OLE compound file header, which is what an encrypted .docx looks like."""
+    path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 504)
+    return path
+
+
+def build_word_documents(directory: Path) -> list[Path]:
+    """Kept out of build_all, whose document count other tests rely on."""
+    directory.mkdir(parents=True, exist_ok=True)
+    return [
+        build_docx_korean(directory / "manual_ko.docx"),
+        build_docx_chinese_table(directory / "maintenance_zh.docx"),
+        build_docx_tracked(directory / "tracked_en.docx"),
+        build_docx_encrypted_stand_in(directory / "locked.docx"),
+    ]
+
+
 def build_all(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     return [
@@ -289,5 +415,9 @@ def build_all(directory: Path) -> list[Path]:
 
 if __name__ == "__main__":
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/sps-fixtures")
-    for created in build_all(target) + build_wrapping(target / "wrapping"):
+    for created in (
+        build_all(target)
+        + build_wrapping(target / "wrapping")
+        + build_word_documents(target / "word")
+    ):
         print(created)

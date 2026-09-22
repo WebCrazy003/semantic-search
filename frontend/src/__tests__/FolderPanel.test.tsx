@@ -60,14 +60,19 @@ describe('folders indexed in place', () => {
   it('lists each folder with what it holds', () => {
     const library = makeLibrary({
       folders: [
-        makeFolder({ path: '/documents', is_default: true, pdf_count: 3, indexed_documents: 3 }),
-        makeFolder({ path: '/Users/you/manuals', pdf_count: 40, indexed_documents: 38 }),
+        makeFolder({
+          path: '/documents',
+          is_default: true,
+          document_count: 3,
+          indexed_documents: 3,
+        }),
+        makeFolder({ path: '/Users/you/manuals', document_count: 40, indexed_documents: 38 }),
       ],
     })
     render(<IndexingPage library={library} />)
 
     expect(screen.getByText('/Users/you/manuals')).toBeInTheDocument()
-    expect(screen.getByText(/40 PDFs on disk · 38 indexed/)).toBeInTheDocument()
+    expect(screen.getByText(/40 documents on disk · 38 indexed/)).toBeInTheDocument()
     expect(screen.getByText('default')).toBeInTheDocument()
   })
 

@@ -38,7 +38,7 @@ describe('App', () => {
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'Indexing' }))
     expect(await screen.findByRole('heading', { name: /^folders$/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /import single pdfs/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /import pdf or word files/i })).toBeInTheDocument()
   })
 
   it('loads the library once for both tabs that need it', async () => {
@@ -100,7 +100,7 @@ describe('state across tab switches', () => {
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'Indexing' }))
     await userEvent.upload(
-      screen.getByLabelText(/pdf files to import/i),
+      screen.getByLabelText(/pdf or word files to import/i),
       new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], 'chosen.pdf', {
         type: 'application/pdf',
       }),

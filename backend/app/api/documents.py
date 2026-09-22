@@ -1,7 +1,9 @@
 # backend/app/api/documents.py
 from __future__ import annotations
 
+import io
 import re
+import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -15,14 +17,17 @@ from app.models.response_models import (
     RemovedDocumentResponse,
     UploadResponse,
 )
+from app.services.docx_service import DOCX_MEDIA_TYPE, OLE_MAGIC, ZIP_MAGIC
+from app.services.extractors import file_type_for
 
 logger = get_logger("api.documents")
 router = APIRouter(tags=["documents"])
 
-# Upload limits. A PDF larger than this is far more likely to be a mistake than a
+# Upload limits. A file larger than this is far more likely to be a mistake than a
 # manual, and the whole file is read into memory before it is written.
 _MAX_UPLOAD_BYTES = 200 * 1024 * 1024
 _PDF_MAGIC = b"%PDF-"
+_NOT_SUPPORTED = "not a PDF or Word (.docx) file"
 _UNSAFE = re.compile(r"[^\w.\- ()　-鿿가-힯]", re.UNICODE)
 
 
@@ -56,6 +61,8 @@ def list_documents(
             error_message=record.error_message,
             alt_filepaths=record.alt_filepaths,
             indexed_at=record.indexed_at,
+            file_type=file_type_for(record.filename),
+            pages_approximate=file_type_for(record.filename) == "docx" and record.pages > 0,
         )
         for record in records
     ]
@@ -66,7 +73,7 @@ async def upload_documents(
     files: list[UploadFile] = File(...),
     container: Container = Depends(get_container),
 ) -> UploadResponse:
-    """Copy PDFs into the documents folder. Indexing is a separate, explicit step.
+    """Copy PDF and Word files into the documents folder. Indexing is a separate step.
 
     Nothing is parsed here: a file that turns out to be scanned or damaged is reported
     by the indexing run, which is the one place that classifies documents.
@@ -82,8 +89,9 @@ async def upload_documents(
         if not name:
             rejected.append(RejectedUpload(filename=upload.filename or "?", reason="no filename"))
             continue
-        if not name.lower().endswith(".pdf"):
-            rejected.append(RejectedUpload(filename=name, reason="not a .pdf file"))
+        suffix = Path(name).suffix.lower()
+        if suffix not in container.extractors.suffixes:
+            rejected.append(RejectedUpload(filename=name, reason=_NOT_SUPPORTED))
             continue
 
         payload = await upload.read()
@@ -95,8 +103,9 @@ async def upload_documents(
                 )
             )
             continue
-        if not payload.startswith(_PDF_MAGIC):
-            rejected.append(RejectedUpload(filename=name, reason="not a PDF (bad header)"))
+        problem = _header_problem(suffix, payload)
+        if problem:
+            rejected.append(RejectedUpload(filename=name, reason=problem))
             continue
 
         target = _free_path(directory / name)
@@ -112,7 +121,8 @@ def get_document_file(
     document_id: str,
     container: Container = Depends(get_container),
 ) -> FileResponse:
-    """Serve one indexed PDF so the UI can open it at the matching page.
+    """Serve one indexed file: a PDF opens in the browser at the matching page, and a
+    Word file, which browsers cannot show, downloads.
 
     Only files that are in the manifest and still inside the configured documents
     folder are served: the id is not a path, and the resolved path is checked against
@@ -130,11 +140,14 @@ def get_document_file(
     for candidate in record.known_paths:
         path = Path(candidate).resolve()
         if any(path.is_relative_to(root) for root in roots) and path.is_file():
+            media_type = container.extractors.media_type_for(path)
             return FileResponse(
                 path,
-                media_type="application/pdf",
+                media_type=media_type,
                 filename=record.filename,
-                content_disposition_type="inline",
+                content_disposition_type=(
+                    "attachment" if media_type == DOCX_MEDIA_TYPE else "inline"
+                ),
             )
 
     raise HTTPException(
@@ -148,7 +161,7 @@ def remove_document(
     document_id: str,
     container: Container = Depends(get_container),
 ) -> RemovedDocumentResponse:
-    """Unindex one document. The PDF itself is left on disk.
+    """Unindex one document. The file itself is left on disk.
 
     Refused while a run is in progress, because the sweep at the end of that run owns
     the same rows.
@@ -165,6 +178,22 @@ def remove_document(
         chunks_removed=record.chunks,
         file_kept=True,
     )
+
+
+def _header_problem(suffix: str, payload: bytes) -> str | None:
+    """Check the bytes match the name, so a renamed file is refused up front."""
+    if suffix == ".pdf":
+        return None if payload.startswith(_PDF_MAGIC) else "not a PDF (bad header)"
+    if payload.startswith(OLE_MAGIC):
+        return "a password-protected or old-format (.doc) Word file"
+    if not payload.startswith(ZIP_MAGIC):
+        return "not a Word .docx file (bad header)"
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            archive.getinfo("word/document.xml")
+    except (zipfile.BadZipFile, KeyError):
+        return "not a Word .docx file (no document inside)"
+    return None
 
 
 def _safe_name(raw: str) -> str:
