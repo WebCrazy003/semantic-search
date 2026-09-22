@@ -91,6 +91,7 @@ def build_container(settings: Settings) -> Container:
     pdf = PdfService(
         min_document_chars=settings.pdf_min_document_chars,
         extract_tables=settings.pdf_extract_tables,
+        korean_midword_join=settings.pdf_korean_midword_join,
     )
     return Container(
         settings=settings,

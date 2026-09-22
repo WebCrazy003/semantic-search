@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 Device = Literal["auto", "cpu", "mps", "cuda"]
+Toggle = Literal["auto", "on", "off"]
 
 
 class Settings(BaseSettings):
@@ -31,6 +32,9 @@ class Settings(BaseSettings):
     pdf_directory: Path = Path("./documents")
     pdf_extract_tables: bool = True
     pdf_min_document_chars: int = 20
+    # Whether a Korean line that ends without a trailing space broke inside a word.
+    # auto decides per document from the evidence; on and off force it.
+    pdf_korean_midword_join: Toggle = "auto"
 
     # Qdrant
     qdrant_url: str = "http://127.0.0.1:6333"

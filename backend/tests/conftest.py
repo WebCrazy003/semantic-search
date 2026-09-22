@@ -85,3 +85,13 @@ def corpus_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     directory = tmp_path_factory.mktemp("corpus")
     build_all(directory)
     return directory
+
+
+@pytest.fixture(scope="session")
+def wrap_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """PDFs whose words are split by line wraps, blocks and page breaks."""
+    from tests.fixtures.make_fixtures import build_wrapping
+
+    directory = tmp_path_factory.mktemp("wrapping")
+    build_wrapping(directory)
+    return directory

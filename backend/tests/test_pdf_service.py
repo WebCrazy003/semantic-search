@@ -179,3 +179,101 @@ class TestUnsupportedAndBrokenFiles:
     ) -> None:
         with pytest.raises(PdfExtractionError):
             service.extract(tmp_path / "nope.pdf", document_id="x", file_hash="x")
+
+
+class TestWholeWords:
+    def test_hyphenated_words_are_rejoined(self, service: PdfService, wrap_dir: Path) -> None:
+        text = _extract(service, wrap_dir / "wrap_en.pdf").pages[0].text
+        assert "maintenance light" in text
+        assert "maintenance log" in text  # soft hyphen
+        assert "state-of-the-art controller" in text
+        assert "COVID-19 lockout codes and ISO-9001 audit" in text
+        assert "mainte" not in text.replace("maintenance", "")
+
+    def test_a_paragraph_split_into_two_blocks_is_one_block(
+        self, service: PdfService, wrap_dir: Path
+    ) -> None:
+        page = _extract(service, wrap_dir / "wrap_en.pdf").pages[0]
+        assert "The seal inspection takes place every week." in [b.text for b in page.blocks]
+
+    def test_a_word_split_over_a_page_break_stays_on_its_first_page(
+        self, service: PdfService, wrap_dir: Path
+    ) -> None:
+        first, second = _extract(service, wrap_dir / "wrap_en.pdf").pages
+        assert "recorded in the inspection" in first.text
+        assert second.text.startswith("report before restarting")
+        assert "tion" not in second.text.split()
+
+    def test_korean_mid_word_breaks_are_joined(self, service: PdfService, wrap_dir: Path) -> None:
+        from tests.fixtures.make_fixtures import WRAP_KOREAN_TEXT
+
+        text = _extract(service, wrap_dir / "wrap_ko_charwrap.pdf").pages[0].text
+        assert text == WRAP_KOREAN_TEXT + " " + WRAP_KOREAN_TEXT
+
+    def test_korean_without_trailing_space_evidence_keeps_word_spaces(
+        self, service: PdfService, wrap_dir: Path
+    ) -> None:
+        # No evidence, so every break gets a space: never two words glued together.
+        text = _extract(service, wrap_dir / "wrap_ko_nospace.pdf").pages[0].text
+        assert "교체하기 전에" in text
+        assert "완전 히" in text
+
+    def test_korean_mid_word_join_can_be_forced_off(self, wrap_dir: Path) -> None:
+        service = PdfService(korean_midword_join="off")
+        text = _extract(service, wrap_dir / "wrap_ko_charwrap.pdf").pages[0].text
+        assert "완전 히" in text
+
+    def test_korean_mid_word_join_can_be_forced_on(self, wrap_dir: Path) -> None:
+        service = PdfService(korean_midword_join="on")
+        text = _extract(service, wrap_dir / "wrap_ko_nospace.pdf").pages[0].text
+        assert "완전히" in text
+
+    def test_a_list_item_is_not_merged_into_the_paragraph_above(self) -> None:
+        from app.services.pdf_service import _Region
+        from app.services.text_service import WrappedLine
+
+        def region(text: str, top: float) -> _Region:
+            return _Region("paragraph", [WrappedLine(text)], top, 56, 56, top + 15, 15)
+
+        merged = PdfService._merge_continuations(
+            [region("Check these parts", 100), region("• the filter", 117)], body_size=11
+        )
+        assert len(merged) == 2
+
+    def test_a_finished_sentence_is_not_merged_with_the_next_block(self) -> None:
+        from app.services.pdf_service import _Region
+        from app.services.text_service import WrappedLine
+
+        def region(text: str, top: float) -> _Region:
+            return _Region("paragraph", [WrappedLine(text)], top, 56, 56, top + 15, 15)
+
+        merged = PdfService._merge_continuations(
+            [region("Close the valve.", 100), region("Then open the lid", 117)], body_size=11
+        )
+        assert len(merged) == 2
+
+    def test_a_code_listing_keeps_one_block_per_line(self) -> None:
+        from app.services.pdf_service import _Region
+        from app.services.text_service import WrappedLine
+
+        def region(text: str, top: float) -> _Region:
+            return _Region(
+                "paragraph", [WrappedLine(text)], top, 56, 56, top + 15, 15, monospace=True
+            )
+
+        merged = PdfService._merge_continuations(
+            [region("render: function(){", 100), region("return x", 117)], body_size=11
+        )
+        assert len(merged) == 2
+
+    def test_a_citation_after_a_full_stop_ends_the_paragraph(self) -> None:
+        from app.services.pdf_service import _Region
+        from app.services.text_service import WrappedLine
+
+        def region(text: str, top: float) -> _Region:
+            return _Region("paragraph", [WrappedLine(text)], top, 56, 56, top + 15, 15)
+
+        merged = PdfService._merge_continuations(
+            [region("把工程應用到軟體上。[5]", 100), region("與開發有關的理論", 117)], body_size=11
+        )
+        assert len(merged) == 2

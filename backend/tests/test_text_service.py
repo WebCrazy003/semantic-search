@@ -1,6 +1,8 @@
 # backend/tests/test_text_service.py
 from app.services.text_service import (
+    WrappedLine,
     detect_language,
+    join_across_break,
     join_sentences,
     join_wrapped_lines,
     normalize_text,
@@ -64,14 +66,74 @@ class TestJoinWrappedLines:
     def test_repairs_a_hyphenated_latin_word_split_across_lines(self) -> None:
         assert join_wrapped_lines(["mainten-", "ance schedule"]) == "maintenance schedule"
 
-    def test_does_not_strip_a_hyphen_from_an_identifier(self) -> None:
-        assert join_wrapped_lines(["model XJ-", "200B"]) == "model XJ- 200B"
+    def test_keeps_the_hyphen_of_an_identifier_split_across_lines(self) -> None:
+        assert join_wrapped_lines(["model XJ-", "200B"]) == "model XJ-200B"
+
+    def test_keeps_the_hyphen_before_a_digit(self) -> None:
+        assert join_wrapped_lines(["COVID-", "19 cases"]) == "COVID-19 cases"
+        assert join_wrapped_lines(["on 2024-09-", "21"]) == "on 2024-09-21"
+
+    def test_keeps_the_hyphens_of_a_compound(self) -> None:
+        assert join_wrapped_lines(["the state-of-the-", "art unit"]) == "the state-of-the-art unit"
+
+    def test_removes_a_line_end_hyphen_before_a_lowercase_letter(self) -> None:
+        # Decided: e-mail split at the hyphen becomes email; the model reads both alike.
+        assert join_wrapped_lines(["send an e-", "mail"]) == "send an email"
+
+    def test_repairs_a_soft_hyphen_at_the_end_of_a_line(self) -> None:
+        assert join_wrapped_lines(["main\u00ad", "tenance"]) == "maintenance"
+
+    def test_repairs_unicode_hyphens(self) -> None:
+        assert join_wrapped_lines(["mainte\u2010", "nance"]) == "maintenance"
+        assert join_wrapped_lines(["mainte\u2011", "nance"]) == "maintenance"
+
+    def test_repairs_a_hyphenated_word_with_accented_letters(self) -> None:
+        assert join_wrapped_lines(["un résu-", "mé complet"]) == "un résumé complet"
+
+    def test_a_lone_dash_is_not_a_hyphenation(self) -> None:
+        assert join_wrapped_lines(["pressure -", "see table"]) == "pressure - see table"
+
+    def test_closing_punctuation_takes_no_space(self) -> None:
+        assert join_wrapped_lines(["제출해야 합니다", "."]) == "제출해야 합니다."
+        assert join_wrapped_lines(["(see page 4", ")"]) == "(see page 4)"
+
+    def test_joins_a_korean_mid_word_break_when_trailing_spaces_are_evidence(self) -> None:
+        lines = [WrappedLine("점검 주기는 유지보"), WrappedLine("수 계획에 따라")]
+        assert join_wrapped_lines(lines, korean_midword_join=True) == "점검 주기는 유지보수 계획에 따라"
+
+    def test_keeps_the_korean_word_space_marked_by_a_trailing_space(self) -> None:
+        lines = [WrappedLine("필터를 교체하기", trailing_space=True), WrappedLine("전에")]
+        assert join_wrapped_lines(lines, korean_midword_join=True) == "필터를 교체하기 전에"
+
+    def test_without_evidence_a_korean_break_keeps_its_space(self) -> None:
+        lines = [WrappedLine("유지보"), WrappedLine("수 계획")]
+        assert join_wrapped_lines(lines) == "유지보 수 계획"
 
     def test_ignores_blank_lines(self) -> None:
         assert join_wrapped_lines(["one", "  ", "two"]) == "one two"
 
     def test_returns_an_empty_string_for_no_lines(self) -> None:
         assert join_wrapped_lines([]) == ""
+
+
+class TestJoinAcrossBreak:
+    def test_joins_a_hyphenated_word(self) -> None:
+        joined = join_across_break(
+            "the inspec-", "tion", left_trailing_space=False, korean_midword_join=False
+        )
+        assert joined == "the inspection"
+
+    def test_refuses_an_ordinary_word_boundary(self) -> None:
+        # Across a page break a space is not a safe default, so it declines instead.
+        assert (
+            join_across_break("the end.", "Next", left_trailing_space=False, korean_midword_join=False)
+            is None
+        )
+
+    def test_joins_korean_only_with_evidence(self) -> None:
+        kwargs = {"left_trailing_space": False}
+        assert join_across_break("유지보", "수", korean_midword_join=True, **kwargs) == "유지보수"
+        assert join_across_break("유지보", "수", korean_midword_join=False, **kwargs) is None
 
 
 class TestSplitParagraphs:

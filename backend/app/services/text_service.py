@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 _HAN = r"一-鿿㐀-䶿豈-﫿"
 _HANGUL = r"가-힣ㄱ-ㆎ"
@@ -27,8 +29,18 @@ _SPACE_BETWEEN_WIDE = re.compile(rf"(?<=[{_WIDE}]) +(?=[{_WIDE}])")
 
 _ENDS_WIDE = re.compile(rf"[{_WIDE}]$")
 _STARTS_WIDE = re.compile(rf"^[{_WIDE}]")
-_LATIN_HYPHEN_TAIL = re.compile(r"[A-Za-z]-$")
-_LATIN_HEAD = re.compile(r"^[A-Za-z]")
+_ENDS_HANGUL = re.compile(rf"[{_HANGUL}]$")
+_STARTS_HANGUL = re.compile(rf"^[{_HANGUL}]")
+_SOFT_HYPHEN = "\u00ad"
+# ASCII hyphen-minus, U+2010 hyphen, U+2011 non-breaking hyphen.
+_HYPHENS = "-\u2010\u2011"
+# [^\W\d_] is "any letter, any script"; [^\W_] adds digits.
+_LETTER_HYPHEN_TAIL = re.compile(rf"[^\W\d_][{_HYPHENS}]$")
+_WORD_HYPHEN_TAIL = re.compile(rf"[^\W_][{_HYPHENS}]$")
+# Punctuation that closes what came before; a line starting with it never takes a space.
+_STARTS_CLOSING = re.compile(r"^[.,;:!?%)\]}」』》〉）］｝。，、；：！？]")
+# The last word already has a hyphen inside it, so it is a compound: state-of-the-
+_COMPOUND_HYPHEN_TAIL = re.compile(rf"[^\W_][{_HYPHENS}]\S*[^\W_][{_HYPHENS}]$")
 
 _CJK_TERMINATORS = "。！？；…．"
 _SENTENCE_BREAK = re.compile(
@@ -57,24 +69,92 @@ def normalize_text(raw: str) -> str:
     return text.strip()
 
 
-def join_wrapped_lines(lines: list[str]) -> str:
+@dataclass(frozen=True, slots=True)
+class WrappedLine:
+    """One rendered line, plus whether the PDF put whitespace after it.
+
+    The trailing space is the only evidence a PDF carries about whether a Korean
+    line broke between two words or in the middle of one.
+    """
+
+    text: str
+    trailing_space: bool = False
+
+
+def ends_in_hangul(text: str) -> bool:
+    return bool(_ENDS_HANGUL.search(text.rstrip()))
+
+
+def join_wrapped_lines(
+    lines: Sequence[str | WrappedLine], *, korean_midword_join: bool = False
+) -> str:
     """Join the rendered lines of one paragraph back into running text.
 
     Only the extractor knows that a group of lines is a single paragraph, so this is
-    called from pdf_service rather than from normalize_text.
+    called from pdf_service rather than from normalize_text. Plain strings count as
+    lines with no trailing space.
+
+    korean_midword_join says the caller trusts trailing spaces: a Hangul line with
+    none then broke inside a word and is glued to the next without a space.
     """
-    parts = [line.strip() for line in lines if line.strip()]
+    parts = [_as_line(line) for line in lines]
+    parts = [part for part in parts if part.text]
     if not parts:
         return ""
-    result = parts[0]
+    result = parts[0].text
+    previous = parts[0]
     for part in parts[1:]:
-        if _LATIN_HYPHEN_TAIL.search(result) and _LATIN_HEAD.match(part):
-            result = result[:-1] + part  # mainten- + ance -> maintenance
-        elif _ENDS_WIDE.search(result) and _STARTS_WIDE.match(part):
-            result = result + part  # Han has no word spaces
-        else:
-            result = result + " " + part  # Korean, Latin, and mixed boundaries
+        result = _join_pair(result, previous.trailing_space, part.text, korean_midword_join)
+        previous = part
     return result
+
+
+def join_across_break(
+    left: str, right: str, *, left_trailing_space: bool, korean_midword_join: bool
+) -> str | None:
+    """Join two fragments only when the boundary is certainly inside a word.
+
+    Used where a paragraph continues on the next page: there, a plain space is not
+    a safe default, so anything that is not a split word returns None.
+    """
+    left, right = left.rstrip(), right.lstrip()
+    if not left or not right:
+        return None
+    if left.endswith(_SOFT_HYPHEN):
+        return left[:-1] + right
+    if _COMPOUND_HYPHEN_TAIL.search(left) and right[0].isalnum():
+        return left + right  # state-of-the- + art keeps its hyphen
+    if _LETTER_HYPHEN_TAIL.search(left) and right[0].islower():
+        return left[:-1] + right
+    if (
+        korean_midword_join
+        and not left_trailing_space
+        and _ENDS_HANGUL.search(left)
+        and _STARTS_HANGUL.match(right)
+    ):
+        return left + right
+    return None
+
+
+def _as_line(line: str | WrappedLine) -> WrappedLine:
+    if isinstance(line, WrappedLine):
+        return WrappedLine(line.text.strip(), line.trailing_space)
+    return WrappedLine(line.strip())
+
+
+def _join_pair(left: str, left_trailing_space: bool, right: str, midword: bool) -> str:
+    joined = join_across_break(
+        left, right, left_trailing_space=left_trailing_space, korean_midword_join=midword
+    )
+    if joined is not None:
+        return joined  # mainte- + nance, main\u00ad + tenance, 유지보 + 수
+    if _WORD_HYPHEN_TAIL.search(left) and (right[0].isupper() or right[0].isdigit()):
+        return left + right  # COVID- + 19, XJ- + 200B: the hyphen is part of the name
+    if _ENDS_WIDE.search(left) and _STARTS_WIDE.match(right):
+        return left + right  # Han has no word spaces
+    if _STARTS_CLOSING.match(right):
+        return left + right  # 합니다 + . and word + ) close without a space
+    return left + " " + right  # Korean, Latin, and mixed boundaries
 
 
 def split_paragraphs(text: str) -> list[str]:

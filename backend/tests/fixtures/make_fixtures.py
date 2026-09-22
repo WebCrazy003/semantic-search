@@ -183,6 +183,100 @@ def build_scanned_stand_in(path: Path) -> Path:
     return path
 
 
+# ---------------------------------------------------------------- word wrapping
+
+WRAP_KOREAN_TEXT = (
+    "필터를 교체하기 전에 반드시 주 전원 스위치를 끄고 장비가 완전히 식을 때까지 "
+    "기다리십시오. 유지보수 주기는 사용 환경에 따라 달라지며 먼지가 많은 곳에서는 "
+    "점검 간격을 절반으로 줄여야 합니다. 압력계 수치를 매주 확인하고 정상 범위를 "
+    "벗어나면 즉시 운전을 중지하십시오. 윤활유는 제조사가 지정한 등급만 사용하며 "
+    "교체한 날짜를 점검 기록부에 남겨 두십시오. 보증 수리를 요청할 때에는 구매 "
+    "증빙과 장비 일련번호를 함께 제출해야 합니다."
+)
+_WRAP_KOREAN_WIDTH = 17  # characters per line, so breaks fall inside words
+
+
+def _character_wrap(text: str, width: int) -> list[str]:
+    """Break every `width` characters, as HWP and Word do for Korean by default.
+
+    A break that lands on a space keeps the space at the end of the line, which is
+    what most generators write and what the extractor uses as evidence.
+    """
+    lines: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + width, len(text))
+        line = text[start:end]
+        if end < len(text) and text[end] == " ":
+            line += " "
+            end += 1
+        lines.append(line)
+        start = end
+    return lines
+
+
+def _write_lines(page: fitz.Page, lines: list[str], top: float, step: float = 14) -> float:
+    y = top
+    for line in lines:
+        page.insert_text((56, y), line, fontsize=11, fontname=_font_for(line))
+        y += step
+    return y
+
+
+def build_wrap_english(path: Path) -> Path:
+    """Hyphenation of every kind, a paragraph split into two blocks, and a word
+    split across a page break with a page-number footer in between."""
+    document = fitz.open()
+    first = document.new_page(width=595, height=842)
+    _write_lines(
+        first,
+        [
+            "Before any work, isolate the power supply and wait for the mainte-",
+            "nance light to switch off. The state-of-the-",
+            "art controller reports COVID-",
+            "19 lockout codes and ISO-",
+            "9001 audit results. Keep the main\u00ad",
+            "tenance log with the unit.",
+        ],
+        100,
+    )
+    # 20 pt apart: MuPDF puts these two lines in separate blocks.
+    _write_lines(first, ["The seal inspec-", "tion takes place every week."], 220, step=20)
+    _write_lines(first, ["All readings must be recorded in the inspec-"], 780)
+    first.insert_text((280, 826), "Page 1", fontsize=9, fontname=LATIN_FONT)
+
+    second = document.new_page(width=595, height=842)
+    _write_lines(second, ["tion report before restarting the unit."], 80)
+    second.insert_text((280, 826), "Page 2", fontsize=9, fontname=LATIN_FONT)
+    document.save(path)
+    document.close()
+    return path
+
+
+def build_wrap_korean(path: Path, *, trailing_spaces: bool = True) -> Path:
+    """Korean broken mid-word. Without trailing spaces there is no evidence."""
+    # Twice over, so there are enough line ends for the extractor to judge by.
+    lines = _character_wrap(WRAP_KOREAN_TEXT + " " + WRAP_KOREAN_TEXT, _WRAP_KOREAN_WIDTH)
+    if not trailing_spaces:
+        lines = [line.rstrip() for line in lines]
+    document = fitz.open()
+    page = document.new_page(width=595, height=842)
+    _write_lines(page, lines, 100)
+    document.save(path)
+    document.close()
+    return path
+
+
+def build_wrapping(directory: Path) -> list[Path]:
+    """Kept out of build_all, whose document count other tests rely on."""
+    directory.mkdir(parents=True, exist_ok=True)
+    return [
+        build_wrap_english(directory / "wrap_en.pdf"),
+        build_wrap_korean(directory / "wrap_ko_charwrap.pdf"),
+        build_wrap_korean(directory / "wrap_ko_nospace.pdf", trailing_spaces=False),
+    ]
+
+
 def build_all(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     return [
@@ -195,5 +289,5 @@ def build_all(directory: Path) -> list[Path]:
 
 if __name__ == "__main__":
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/sps-fixtures")
-    for created in build_all(target):
+    for created in build_all(target) + build_wrapping(target / "wrapping"):
         print(created)
