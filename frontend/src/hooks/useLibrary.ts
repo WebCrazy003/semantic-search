@@ -161,7 +161,7 @@ export function useLibrary(): Library {
       try {
         await addFolder(trimmed)
         await refresh()
-        // Registering only records the folder; its PDFs become searchable when a job
+        // Registering only records the folder; its documents become searchable when a job
         // has read them, so one starts here.
         await startIndexing({})
         await refresh()

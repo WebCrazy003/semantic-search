@@ -1,7 +1,8 @@
 Offline Semantic PDF Search
 ===========================
 
-Semantic search over Chinese and Korean PDFs, running entirely on this computer.
+Semantic search over Chinese and Korean PDFs and Word files, running entirely on
+this computer.
 No internet connection is needed, now or ever. Nothing is sent anywhere.
 
 
@@ -13,7 +14,8 @@ Getting started
 
 2. Your browser opens at http://127.0.0.1:8000/
 
-3. Put PDFs into the documents folder next to this file, or use the Documents
+3. Put PDF or Word (.docx) files into the documents folder next to this file,
+   or use the Documents
    tab to add any folder on this computer. Folders you add are read where they
    are; nothing is copied or moved.
 
@@ -45,9 +47,16 @@ Search finds nothing
     wrong, stop the app and run this from a command prompt in this folder:
         runtime\python\python.exe scripts\rebuild_manifest.py
 
-A PDF will not index
-    Scanned or image-only PDFs have no text to read, and encrypted ones cannot
-    be opened. Both are reported as "unsupported".
+A PDF or Word file will not index
+    Scanned or image-only PDFs have no text to read, and encrypted files cannot
+    be opened. Both are reported as "unsupported". Old Word files (.doc) are not
+    read at all: open them in Word and save them as .docx.
+
+Indexing is slow
+    The Indexing page says whether it runs on the GPU or the CPU. With an NVIDIA
+    GeForce RTX card (20-series or newer), install NVIDIA's latest display
+    driver, version 580 or newer; nothing else is needed. Without one, indexing
+    uses the CPU, which works but takes longer. Searching is fast either way.
 
 
 Sharing it on your network
@@ -62,7 +71,7 @@ only on a network you trust, and go back to plain run.bat afterwards.
 What is in this folder
 ----------------------
 
-documents\        put your PDFs here
+documents\        put your PDF and Word files here
 qdrant_storage\   the search index; delete it to start over, then re-index
 data\             bookkeeping about which files were indexed
 models\           the embedding model

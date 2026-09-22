@@ -8,7 +8,7 @@
 
 ## 1. What this is
 
-A search tool for your own PDF documents that understands **meaning**, not just matching words.
+A search tool for your own PDF and Word documents that understands **meaning**, not just matching words.
 
 Ask "how often should the seals be replaced" and it finds the passage about maintenance intervals, even when that passage never uses the word "often". Ask in Korean and it can find the answer inside a Chinese document.
 
@@ -22,7 +22,7 @@ Someone with a folder of technical manuals, contracts, or reports in Chinese, Ko
 
 | You want to | You do this |
 |---|---|
-| Make documents searchable | Put PDFs in the `documents` folder, press **Index documents** |
+| Make documents searchable | Put PDF or Word (.docx) files in the `documents` folder, press **Index documents** |
 | Find a passage | Type a question or phrase, press **Search** |
 | See what is searchable | Open the **Documents** tab |
 | Search across languages | Just search. Chinese, Korean, and English all work against all documents |
@@ -59,6 +59,8 @@ Results are ordered by relevance, closest first.
 **Works:**
 
 - PDFs where the text can be selected and copied
+- Word documents saved as .docx. Their page numbers are approximate (shown as `Page ~3`), because a Word file has no fixed pages
+- Words split across lines, including hyphenated words and Korean words broken in the middle, come out whole
 - Chinese, Korean, English, and documents mixing them
 - Documents in nested subfolders
 - Tables, which are kept whole with their header row
@@ -66,7 +68,8 @@ Results are ordered by relevance, closest first.
 **Does not work in this version:**
 
 - Scanned documents and photographed pages, where the text is really an image
-- Password-protected PDFs
+- Password-protected PDFs and Word files
+- Old Word files (.doc); save them as .docx first
 - Damaged files
 
 Unreadable files never stop a scan. They appear on the Documents tab with their status, damaged ones with the error that caused it, and everything else still gets indexed.
@@ -96,7 +99,7 @@ The only time the internet is needed is during first installation, to download t
 ## 9. Getting started
 
 1. Install once, with the internet on. This downloads the language model, about 2.5 GB.
-2. Copy your PDFs into the `documents` folder.
+2. Copy your PDF and Word files into the `documents` folder.
 3. Start the tool, open the Documents tab, and press **Index documents**.
 
 Indexing ten documents takes a few minutes the first time. After that you can disconnect from the internet entirely.
@@ -107,7 +110,7 @@ Indexing ten documents takes a few minutes the first time. After that you can di
 |---|---|
 | Search speed | Under one second |
 | Starting the tool | Ten to thirty seconds, while the language model loads |
-| Indexing speed | A few minutes for ten documents, then only new files are processed |
+| Indexing speed | A few minutes for ten documents, then only new files are processed. On a Windows PC with an NVIDIA GeForce RTX card (20-series or newer, driver 580 or newer) indexing uses the graphics card and is much faster |
 | Documents supported | Built for ten, designed to grow to thousands without rework |
 
 ## 11. Not in this version

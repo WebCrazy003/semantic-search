@@ -44,7 +44,7 @@ afterEach(() => {
 describe('SearchPage', () => {
   it('starts with an empty state and no results', () => {
     render(<SearchPage />)
-    expect(screen.getByText(/search your indexed pdfs/i)).toBeInTheDocument()
+    expect(screen.getByText(/search your indexed pdf and word files/i)).toBeInTheDocument()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 

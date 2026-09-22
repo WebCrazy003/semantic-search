@@ -1,12 +1,15 @@
 # Offline Semantic PDF Search
 
-Semantic search over Chinese and Korean PDFs, running entirely on one machine. No
+Semantic search over Chinese and Korean PDFs and Word (.docx) files, running
+entirely on one machine. No
 cloud API, no external search service, and no internet connection once the model is
 downloaded.
 
 ## How it works
 
-    PDFs -> PyMuPDF -> chunker -> BGE-M3 -> Qdrant -> FastAPI -> React
+    PDF  -> PyMuPDF     \
+                          -> chunker -> BGE-M3 -> Qdrant -> FastAPI -> React
+    DOCX -> python-docx /
 
 - **Extraction** is page by page, with heading and table detection.
 - **Chunking** is measured in BGE-M3 tokens, not characters, because Chinese and
@@ -38,7 +41,7 @@ Three processes:
     uv run --directory backend uvicorn app.main:app --host 127.0.0.1 --port 8000
     npm --prefix frontend run dev
 
-Then open http://127.0.0.1:5173. Put PDFs in `documents/` and press
+Then open http://127.0.0.1:5173. Put PDF or Word files in `documents/` and press
 **Index documents** on the Documents tab.
 
 ## Windows: building an offline release
@@ -55,7 +58,7 @@ Run it on a Windows machine that has an internet connection:
 
 It installs uv and Node.js if they are missing, fetches a relocatable CPython, and
 writes everything into `release\semantic-pdf-search-<version>-win64-offline\`. The
-version comes from the [VERSION](VERSION) file. Expect about 3 GB and 15 to 40
+version comes from the [VERSION](VERSION) file. Expect about 6 GB and 20 to 50
 minutes; re-runs reuse the downloaded model.
 
 ### What the release contains
@@ -66,7 +69,7 @@ minutes; re-runs reuse the downloaded model.
     README-FIRST.txt     instructions for whoever ends up using it
     .env                 settings, with QDRANT_PATH already set
     VERSION.txt          version, build date and build machine
-    documents\           where they drop PDFs
+    documents\           where they drop PDF and Word files
     backend\app\         the application
     frontend\dist\       the built interface
     models\bge-m3\       the embedding model
@@ -96,10 +99,50 @@ machine.
 - **No Node and no Vite.** The API serves `frontend/dist` when that folder exists, so
   the release is one process on one port with no proxy. In development the folder is
   absent and Vite serves the UI as before.
-- **The CPU does the embedding.** The PyTorch wheel on PyPI for Windows is CPU-only,
-  so `EMBEDDING_DEVICE=auto` resolves to `cpu`. Searching stays fast; indexing a large
-  library takes noticeably longer than on Apple Silicon. A CUDA build would have to
-  come from PyTorch's own package index, which `prepare-offline.bat` does not use.
+- **An NVIDIA GPU does the embedding when there is one.** See below.
+
+## GPU indexing on Windows
+
+PyPI's PyTorch for Windows is CPU-only, so on Windows `torch` comes from PyTorch's
+own CUDA index instead ([pyproject.toml](backend/pyproject.toml), `[tool.uv.sources]`).
+macOS keeps the PyPI wheel and uses the Apple GPU (mps).
+
+| | |
+|---|---|
+| PyTorch build | `2.14.0+cu130` (CUDA 13.0), from `download.pytorch.org/whl/cu130` |
+| Cards | GeForce RTX 20, 30, 40 and 50-series (GTX 16 too). Tested first on the RTX 5060 |
+| Kernels in the build | `sm_75` (RTX 20), `sm_86` (RTX 30, and RTX 40 through it), `sm_120` (RTX 50); `prepare-offline.bat` fails the build if any is missing |
+| Driver | NVIDIA display driver **580 or newer**. No CUDA Toolkit is needed; the runtime ships inside the wheel |
+| Not supported | GTX 10-series and older, AMD and Intel GPUs. They index on the CPU |
+
+`cu130` is used because it is the oldest PyTorch CUDA index that has the locked torch
+with Blackwell (RTX 50) kernels. `cu126` has no RTX 50 support and `cu128` does not
+publish this torch version.
+
+At startup the backend runs a test kernel on the GPU before trusting it. A driver that
+is too old or a card the build has no kernels for falls back to the CPU, with the
+reason shown on the Indexing page and in `/api/health/ready`. On the GPU:
+
+- **fp16.** About twice as fast and half the memory. Vectors are re-normalized in
+  fp32 and are compatible with an index built on the CPU, so nothing needs
+  re-indexing. `EMBEDDING_PRECISION=fp32` turns it off.
+- **Batch size from graphics memory.** 8 below 6 GB, 16 below 10 GB (the 8 GB
+  RTX 5060), 32 below 16 GB, 64 above. `EMBEDDING_BATCH_SIZE_GPU` overrides it.
+- **Out of memory never fails a run.** The batch is halved and retried; at batch 1
+  the model moves to the CPU for the rest of the process.
+
+`check.bat` prints the torch build, the GPU it found and the driver version.
+`scripts/gpu_report.py` does the same from a command prompt.
+
+## Word documents
+
+`.docx` files are indexed alongside PDFs, with the same headings, paragraphs and
+tables. Tracked insertions are indexed and deletions are not. A Word file has no fixed
+pages, so page numbers come from the page breaks Word records when it saves and are
+shown as approximate (`Page ~3`). Files written by other tools may record none and
+are then one page. Results offer the file as a download, because browsers cannot
+display it. Legacy `.doc` is not supported; save it as `.docx` in Word. Set
+`DOCX_ENABLED=false` to index PDFs only.
 
 ## API
 
@@ -187,9 +230,10 @@ incoming connections; that prompt is this server.
 
 ## Out of scope for this version
 
-OCR for scanned PDFs, keyword and hybrid search, reranking, LLM answers, folder
-watching, PDF preview, user accounts. Image-only PDFs are reported as `unsupported`
-rather than failing the run.
+OCR for scanned PDFs, legacy `.doc`, `.odt` and `.rtf`, keyword and hybrid search,
+reranking, LLM answers, folder watching, PDF preview, user accounts, GPUs other than
+NVIDIA RTX. Image-only PDFs and encrypted files are reported as `unsupported` rather
+than failing the run.
 
 ## Troubleshooting
 
@@ -199,8 +243,10 @@ rather than failing the run.
 | Search returns nothing | `scripts/check_qdrant.py` for the point count, then index |
 | "Cannot reach the backend" in the UI | Uvicorn is on 127.0.0.1:8000 |
 | A PDF is `unsupported` | It is image-only or encrypted; OCR is out of scope |
+| A Word file is `unsupported` | It is password-protected, or an old `.doc` renamed `.docx` |
 | Document counts look wrong | `scripts/rebuild_manifest.py` |
-| Indexing is slow | Raise `EMBEDDING_BATCH_SIZE`, or set `EMBEDDING_DEVICE=mps` |
+| Indexing is slow | The Indexing page says which device is used. On Windows with an RTX card, update the NVIDIA driver to 580+ |
+| Windows: "the NVIDIA GPU could not be used" | Driver older than 580, or a card older than RTX 20; it runs on the CPU meanwhile |
 | Windows: PyTorch will not import | Run `runtime\vc_redist.x64.exe` as administrator |
 | Windows: run.bat says the release is incomplete | Copy the release folder across again, whole |
 | Windows: anything else | `check.bat` in the release folder |

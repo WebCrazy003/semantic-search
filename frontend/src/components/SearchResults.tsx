@@ -22,7 +22,7 @@ export function SearchResults({ response, busy = false }: Props) {
     )
   }
   if (response === null) {
-    return <p className="hint">Search your indexed PDFs in Chinese, Korean, or English.</p>
+    return <p className="hint">Search your indexed PDF and Word files in Chinese, Korean, or English.</p>
   }
   if (response.count === 0) {
     return <p className="hint">No passages matched that query.</p>
