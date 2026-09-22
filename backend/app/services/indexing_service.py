@@ -2,7 +2,7 @@
 """Indexing orchestration.
 
 The only component that catches per-document exceptions, so the specification's rule
-that one bad PDF must not stop the run lives in exactly one place.
+that one bad document must not stop the run lives in exactly one place.
 
 Reservation protocol: the API calls start(), and only if it returns True does it hand
 run() to a background task. start() takes the lock and run() releases it, so two
@@ -21,8 +21,12 @@ from app.models.domain import ExtractedDocument
 from app.models.response_models import IndexFailure, IndexStatusResponse
 from app.services.chunk_service import Chunker
 from app.services.embedding_service import EmbeddingService
+from app.services.extractors import (
+    ExtractionError,
+    ExtractionUnsupportedError,
+    ExtractorRegistry,
+)
 from app.services.manifest_service import DocumentRecord, JobRecord, ManifestService
-from app.services.pdf_service import PdfExtractionError, PdfService, PdfUnsupportedError
 from app.services.qdrant_service import QdrantService
 
 logger = get_logger("indexing")
@@ -63,14 +67,14 @@ class _State:
 class IndexingService:
     def __init__(
         self,
-        pdf: PdfService,
+        extractors: ExtractorRegistry,
         chunker: Chunker,
         embedder: EmbeddingService,
         qdrant: QdrantService,
         manifest: ManifestService,
         default_directory: Path,
     ) -> None:
-        self._pdf = pdf
+        self._extractors = extractors
         self._chunker = chunker
         self._embedder = embedder
         self._qdrant = qdrant
@@ -94,7 +98,7 @@ class IndexingService:
         """Every folder a run covers: the one asked for, or the whole library.
 
         The library is the default documents folder plus the folders registered by
-        the user, whose PDFs stay where they are and are never copied.
+        the user, whose documents stay where they are and are never copied.
         """
         if directory:
             return [Path(directory)]
@@ -182,7 +186,7 @@ class IndexingService:
             paths.extend(self._discover(root))
         with self._state_lock:
             self._state.total = len(paths)
-        logger.info("discovered %d PDF files under %d folder(s)", len(paths), len(readable))
+        logger.info("discovered %d documents under %d folder(s)", len(paths), len(readable))
 
         seen: dict[str, Path] = {}
         for path in paths:
@@ -212,20 +216,19 @@ class IndexingService:
         self._sweep_deleted(set(seen))
         self._finish("completed")
 
-    @staticmethod
-    def _discover(directory: Path) -> list[Path]:
+    def _discover(self, directory: Path) -> list[Path]:
         found = [
             path
             for path in directory.rglob("*")
             if path.is_file()
-            and path.suffix.lower() == ".pdf"
+            and self._extractors.supports(path)
             and not path.name.startswith(_IGNORED_PREFIXES)
             and "__MACOSX" not in path.parts
         ]
         return sorted(found)
 
     def _process(self, path: Path, seen: dict[str, Path], force: bool) -> None:
-        file_hash = self._pdf.compute_file_hash(path)
+        file_hash = self._extractors.compute_file_hash(path)
         document_id = file_hash
 
         if document_id in seen:
@@ -243,13 +246,16 @@ class IndexingService:
 
         self._stage("extracting")
         try:
-            document = self._pdf.extract(path, document_id=document_id, file_hash=file_hash)
-        except PdfUnsupportedError as exc:
+            extractor = self._extractors.for_path(path)
+            if extractor is None:
+                raise ExtractionUnsupportedError(f"{path.name}: unsupported file type")
+            document = extractor.extract(path, document_id=document_id, file_hash=file_hash)
+        except ExtractionUnsupportedError as exc:
             logger.warning("unsupported %s: %s", path.name, exc)
             self._store_record(path, document_id, file_hash, None, 0, "unsupported", exc)
             self._bump("unsupported")
             return
-        except PdfExtractionError as exc:
+        except ExtractionError as exc:
             logger.warning("failed %s: %s", path.name, exc)
             self._record_failure(path.name, str(path), type(exc).__name__, str(exc))
             self._store_record(path, document_id, file_hash, None, 0, "failed", exc)
@@ -259,7 +265,7 @@ class IndexingService:
         self._stage("splitting into passages")
         chunks = self._chunker.chunk_document(document)
         if not chunks:
-            reason = PdfUnsupportedError(f"{path.name} produced no passages")
+            reason = ExtractionUnsupportedError(f"{path.name} produced no passages")
             self._store_record(path, document_id, file_hash, document, 0, "unsupported", reason)
             self._bump("unsupported")
             return
@@ -333,7 +339,7 @@ class IndexingService:
 
     def _mark_document_failed(self, path: Path, error: Exception) -> None:
         try:
-            file_hash = self._pdf.compute_file_hash(path)
+            file_hash = self._extractors.compute_file_hash(path)
         except Exception:
             return
         self._store_record(path, file_hash, file_hash, None, 0, "failed", error)

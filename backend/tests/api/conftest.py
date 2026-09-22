@@ -11,12 +11,11 @@ from fastapi.testclient import TestClient
 from qdrant_client import QdrantClient
 
 from app.config import Settings
-from app.deps import Container
+from app.deps import Container, build_extractors
 from app.main import create_app
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
-from app.services.pdf_service import PdfService
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
 from tests.conftest import CharTokenCounter, FakeEmbeddingService
@@ -47,10 +46,7 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
     )
     manifest = ManifestService(settings.manifest_path)
     chunker = Chunker(tokenizer=tokenizer, config=ChunkConfig())
-    pdf = PdfService(
-        min_document_chars=settings.pdf_min_document_chars,
-        extract_tables=settings.pdf_extract_tables,
-    )
+    extractors = build_extractors(settings)
     return Container(
         settings=settings,
         tokenizer=tokenizer,
@@ -58,9 +54,9 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
         qdrant=qdrant,
         manifest=manifest,
         chunker=chunker,
-        pdf=pdf,
+        extractors=extractors,
         indexing=IndexingService(
-            pdf=pdf,
+            extractors=extractors,
             chunker=chunker,
             embedder=embedder,
             qdrant=qdrant,

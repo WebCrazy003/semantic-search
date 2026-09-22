@@ -13,14 +13,13 @@ import pytest
 from qdrant_client import QdrantClient
 
 from app.config import get_settings
-from app.deps import Container, chunk_config_from
+from app.deps import Container, build_extractors, chunk_config_from
 from app.main import create_app
 from app.models.request_models import SearchFilters, SearchRequest
 from app.services.chunk_service import Chunker
 from app.services.embedding_service import BgeEmbeddingService
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
-from app.services.pdf_service import PdfService
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
 from app.services.tokenizer_service import BgeTokenizer
@@ -82,10 +81,7 @@ def build_container(settings, client_factory, model, corpus: Path, manifest_path
     )
     manifest = ManifestService(manifest_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
-    pdf = PdfService(
-        min_document_chars=settings.pdf_min_document_chars,
-        extract_tables=settings.pdf_extract_tables,
-    )
+    extractors = build_extractors(settings)
     return Container(
         settings=settings,
         tokenizer=tokenizer,
@@ -93,9 +89,9 @@ def build_container(settings, client_factory, model, corpus: Path, manifest_path
         qdrant=qdrant,
         manifest=manifest,
         chunker=chunker,
-        pdf=pdf,
+        extractors=extractors,
         indexing=IndexingService(
-            pdf=pdf,
+            extractors=extractors,
             chunker=chunker,
             embedder=embedder,
             qdrant=qdrant,

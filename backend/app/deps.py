@@ -16,6 +16,7 @@ from app.config import Settings
 from app.logging_config import get_logger
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.embedding_service import BgeEmbeddingService, EmbeddingService
+from app.services.extractors import ExtractorRegistry
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
 from app.services.pdf_service import PdfService
@@ -34,7 +35,7 @@ class Container:
     qdrant: QdrantService
     manifest: ManifestService
     chunker: Chunker
-    pdf: PdfService
+    extractors: ExtractorRegistry
     indexing: IndexingService
     search: SearchService
 
@@ -70,6 +71,19 @@ def build_qdrant_client(settings: Settings) -> QdrantClient:
     return QdrantClient(path=str(settings.qdrant_path))
 
 
+def build_extractors(settings: Settings) -> ExtractorRegistry:
+    """One extractor per supported format, configured from the settings."""
+    return ExtractorRegistry(
+        [
+            PdfService(
+                min_document_chars=settings.pdf_min_document_chars,
+                extract_tables=settings.pdf_extract_tables,
+                korean_midword_join=settings.pdf_korean_midword_join,
+            )
+        ]
+    )
+
+
 def build_container(settings: Settings) -> Container:
     """Load the model and open the stores. Called once, from the lifespan handler."""
     tokenizer = BgeTokenizer(settings.bge_model_path)
@@ -88,11 +102,7 @@ def build_container(settings: Settings) -> Container:
     )
     manifest = ManifestService(settings.manifest_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
-    pdf = PdfService(
-        min_document_chars=settings.pdf_min_document_chars,
-        extract_tables=settings.pdf_extract_tables,
-        korean_midword_join=settings.pdf_korean_midword_join,
-    )
+    extractors = build_extractors(settings)
     return Container(
         settings=settings,
         tokenizer=tokenizer,
@@ -100,9 +110,9 @@ def build_container(settings: Settings) -> Container:
         qdrant=qdrant,
         manifest=manifest,
         chunker=chunker,
-        pdf=pdf,
+        extractors=extractors,
         indexing=IndexingService(
-            pdf=pdf,
+            extractors=extractors,
             chunker=chunker,
             embedder=embedder,
             qdrant=qdrant,

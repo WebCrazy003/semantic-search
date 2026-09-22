@@ -13,7 +13,6 @@ regions with geometry first, then text, once the whole document has been seen.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -31,6 +30,12 @@ from app.models.domain import (
     ExtractedPage,
     PageBlock,
 )
+from app.services.extractors import (
+    ExtractionError,
+    ExtractionUnsupportedError,
+    compute_file_hash,
+    table_markdown,
+)
 from app.services.text_service import (
     WrappedLine,
     detect_language,
@@ -42,7 +47,6 @@ from app.services.text_service import (
 
 logger = get_logger("pdf")
 
-_HASH_BLOCK = 1024 * 1024
 _HEADING_SIZE_RATIO = 1.15
 _HEADING_MAX_CHARS = 120
 _BOLD_HEADING_MAX_CHARS = 80
@@ -105,15 +109,19 @@ class _Page:
     height: float
 
 
-class PdfUnsupportedError(Exception):
+class PdfUnsupportedError(ExtractionUnsupportedError):
     """The file is a PDF but out of scope: encrypted, or image-only."""
 
 
-class PdfExtractionError(Exception):
+class PdfExtractionError(ExtractionError):
     """The file could not be read as a PDF at all."""
 
 
 class PdfService:
+    suffixes = (".pdf",)
+    media_type = "application/pdf"
+    compute_file_hash = staticmethod(compute_file_hash)
+
     def __init__(
         self,
         min_document_chars: int = 20,
@@ -123,14 +131,6 @@ class PdfService:
         self._min_document_chars = min_document_chars
         self._extract_tables = extract_tables
         self._korean_midword_join = korean_midword_join
-
-    @staticmethod
-    def compute_file_hash(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            for block in iter(lambda: handle.read(_HASH_BLOCK), b""):
-                digest.update(block)
-        return digest.hexdigest()
 
     def extract(self, path: Path, *, document_id: str, file_hash: str) -> ExtractedDocument:
         try:
@@ -460,21 +460,8 @@ class PdfService:
                 continue
             rect = fitz.Rect(table.bbox)
             rects.append(rect)
-            blocks.append((rect, self._table_markdown(rows)))
+            blocks.append((rect, table_markdown(rows)))
         return rects, blocks
-
-    @staticmethod
-    def _table_markdown(rows: list[list[str]]) -> str:
-        """Header row first, then a rule, then the body.
-
-        Markdown keeps each row on one line, so the chunker can split a long table by
-        rows and repeat the header, which is what the specification asks for.
-        """
-        width = max(len(row) for row in rows)
-        padded = [row + [""] * (width - len(row)) for row in rows]
-        lines = ["| " + " | ".join(padded[0]) + " |", "| " + " | ".join(["---"] * width) + " |"]
-        lines.extend("| " + " | ".join(row) + " |" for row in padded[1:])
-        return "\n".join(lines)
 
     @staticmethod
     def _overlaps_table(rect: fitz.Rect, table_rects: list[fitz.Rect]) -> bool:

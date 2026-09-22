@@ -6,6 +6,7 @@ import pytest
 from qdrant_client import QdrantClient
 
 from app.services.chunk_service import ChunkConfig, Chunker
+from app.services.extractors import ExtractorRegistry
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
 from app.services.pdf_service import PdfService
@@ -45,7 +46,7 @@ def indexer(
     qdrant: QdrantService, manifest: ManifestService, documents_dir: Path
 ) -> IndexingService:
     return IndexingService(
-        pdf=PdfService(min_document_chars=20, extract_tables=True),
+        extractors=ExtractorRegistry([PdfService(min_document_chars=20, extract_tables=True)]),
         chunker=Chunker(tokenizer=CharTokenCounter(), config=ChunkConfig()),
         embedder=FakeEmbeddingService(dimension=DIMENSION),
         qdrant=qdrant,

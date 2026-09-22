@@ -23,12 +23,12 @@ from typing import Any
 from qdrant_client import QdrantClient
 
 from app.config import get_settings
+from app.deps import build_extractors
 from app.models.request_models import SearchRequest
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.embedding_service import BgeEmbeddingService
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
-from app.services.pdf_service import PdfService
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
 from app.services.tokenizer_service import BgeTokenizer
@@ -156,12 +156,8 @@ def _run_preset(
     with tempfile.TemporaryDirectory() as scratch:
         manifest = ManifestService(Path(scratch) / "eval.db")
         manifest.initialise()
-        pdf = PdfService(
-            min_document_chars=settings.pdf_min_document_chars,
-            extract_tables=settings.pdf_extract_tables,
-        )
         indexer = IndexingService(
-            pdf=pdf,
+            extractors=build_extractors(settings),
             chunker=Chunker(tokenizer=tokenizer, config=PRESETS[preset]),
             embedder=embedder,
             qdrant=qdrant,
