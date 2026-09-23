@@ -164,3 +164,133 @@ class ClearIndexResponse(BaseModel):
     documents_removed: int
     passages_removed: int
     files_kept: bool = True
+
+
+# ------------------------------------------------------------------ admin
+# Read-only introspection for the admin page. Nothing here is used by indexing or
+# search; it exists so a wrong-looking result can be traced to extraction, chunking
+# or retrieval.
+
+
+class ExtractedBlock(BaseModel):
+    kind: str  # heading | paragraph | table
+    text: str
+
+
+class ExtractedPageView(BaseModel):
+    page_number: int
+    text: str
+    char_count: int
+    blocks: list[ExtractedBlock] = []
+
+
+class ExtractionResponse(BaseModel):
+    document_id: str
+    filename: str
+    file_type: str
+    filepath: str
+    pages: int
+    pages_approximate: bool = False
+    language: str | None = None
+    title: str | None = None
+    extracted_ms: int
+    page: int
+    per_page: int
+    # False means the file changed since it was indexed, so what is shown here is not
+    # what the index holds.
+    file_hash_matches_manifest: bool
+    page_views: list[ExtractedPageView] = []
+
+
+class ChunkView(BaseModel):
+    chunk_index: int
+    point_id: str
+    page_start: int
+    page_end: int
+    heading: str | None = None
+    kind: str | None = None
+    token_count: int | None = None
+    char_count: int
+    text: str
+    # Where the repeat from the previous passage starts, and how long it is. The start
+    # is past the repeated section heading when the chunker put one there.
+    overlap_start: int = 0
+    overlap_with_previous: int = 0
+
+
+class ChunkListResponse(BaseModel):
+    document_id: str
+    filename: str
+    total_chunks: int
+    total_tokens: int
+    pages_covered: int
+    offset: int
+    limit: int
+    chunks: list[ChunkView] = []
+
+
+class PayloadField(BaseModel):
+    name: str
+    type: str
+    indexed: bool = False
+    description: str
+
+
+class QdrantSchema(BaseModel):
+    collection: str
+    exists: bool
+    vector_size: int | None = None
+    distance: str | None = None
+    points_count: int | None = None
+    segments_count: int | None = None
+    status: str | None = None
+    payload_indexes: list[str] = []
+    payload_fields: list[PayloadField] = []
+
+
+class ManifestColumn(BaseModel):
+    name: str
+    type: str
+    notnull: bool = False
+    pk: bool = False
+
+
+class ManifestTable(BaseModel):
+    name: str
+    rows: int
+    columns: list[ManifestColumn] = []
+    indexes: list[str] = []
+
+
+class ManifestSchema(BaseModel):
+    path: str
+    tables: list[ManifestTable] = []
+    status_breakdown: dict[str, int] = {}
+
+
+class ChunkingSchema(BaseModel):
+    target_tokens: int
+    max_tokens: int
+    min_tokens: int
+    overlap_tokens: int
+    preserve_headings: bool
+    repeat_heading: bool
+    allow_cross_page: bool
+    prefer_paragraph_boundaries: bool
+    prefer_sentence_boundaries: bool
+
+
+class EmbeddingSchema(BaseModel):
+    model: str
+    vector_size: int
+    device: str | None = None
+    device_name: str | None = None
+    precision: str | None = None
+    max_seq_length: int
+
+
+class IndexSchemaResponse(BaseModel):
+    qdrant: QdrantSchema
+    manifest: ManifestSchema
+    chunking: ChunkingSchema
+    embedding: EmbeddingSchema

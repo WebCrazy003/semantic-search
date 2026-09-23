@@ -244,5 +244,62 @@ class QdrantService:
             if offset is None:
                 return
 
+    def collection_info(self) -> dict[str, Any] | None:
+        """How the collection is configured, for the admin page.
+
+        Returns None rather than raising when nothing has been indexed yet: an empty
+        install is a normal state, not an error to report.
+        """
+        if not self.collection_exists():
+            return None
+        info = self._client.get_collection(collection_name=self._collection)
+        vectors = info.config.params.vectors
+        return {
+            "vector_size": getattr(vectors, "size", None),
+            "distance": str(getattr(vectors, "distance", "")),
+            "points_count": info.points_count,
+            "segments_count": info.segments_count,
+            "status": str(info.status),
+            "payload_indexes": sorted((info.payload_schema or {}).keys()),
+        }
+
+    def iter_chunks(
+        self, document_id: str, offset: int = 0, limit: int = 50
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Every passage of one document, in chunk order, with its full payload.
+
+        Qdrant's scroll offset is a point id rather than a row number, and point ids
+        here are a UUIDv5 of the document and chunk index, so they do not sort in chunk
+        order. This reads the document's points and slices them, which is fine because
+        one document is a few hundred passages at most.
+        """
+        condition = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="document_id", match=models.MatchValue(value=document_id)
+                )
+            ]
+        )
+        payloads: list[dict[str, Any]] = []
+        next_offset = None
+        while True:
+            points, next_offset = self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=condition,
+                limit=512,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = dict(point.payload or {})
+                payload["point_id"] = str(point.id)
+                payloads.append(payload)
+            if next_offset is None:
+                break
+
+        payloads.sort(key=lambda payload: int(payload.get("chunk_index", 0)))
+        return payloads[offset : offset + limit], len(payloads)
+
     def close(self) -> None:
         self._client.close()

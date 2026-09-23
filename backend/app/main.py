@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import documents, folders, health, indexing, search
+from app.api import admin, documents, folders, health, indexing, search
 from app.config import REPO_ROOT, Settings, get_settings
 from app.deps import Container, build_container
 from app.logging_config import configure_logging, get_logger
@@ -70,6 +70,7 @@ def create_app(container: Container | None = None, settings: Settings | None = N
     application.include_router(indexing.router, prefix="/api")
     application.include_router(documents.router, prefix="/api")
     application.include_router(folders.router, prefix="/api")
+    application.include_router(admin.router, prefix="/api")
 
     # Last, so every /api route and /docs is matched before the catch-all mount.
     if FRONTEND_DIST.is_dir():

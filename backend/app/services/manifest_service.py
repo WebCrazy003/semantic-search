@@ -248,6 +248,54 @@ class ManifestService:
             documents=int(row["documents"]), pages=int(row["pages"]), chunks=int(row["chunks"])
         )
 
+    def status_breakdown(self) -> dict[str, int]:
+        rows = self._connect().execute(
+            "SELECT status, COUNT(*) AS count FROM documents GROUP BY status"
+        )
+        return {str(row["status"]): int(row["count"]) for row in rows}
+
+    def describe(self) -> list[dict[str, object]]:
+        """The database's real shape, for the admin page.
+
+        Read with PRAGMA rather than returned from the _SCHEMA literal above, so the
+        page shows what the file actually contains. A copy of the DDL would keep
+        claiming a column exists after a migration removed it.
+        """
+        connection = self._connect()
+        names = [
+            str(row["name"])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table' "
+                "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+        tables: list[dict[str, object]] = []
+        for name in names:
+            # The table names come from sqlite_master, not from a request, so they can
+            # be interpolated; PRAGMA takes no parameters.
+            columns = [
+                {
+                    "name": str(row["name"]),
+                    "type": str(row["type"]),
+                    "notnull": bool(row["notnull"]),
+                    "pk": bool(row["pk"]),
+                }
+                for row in connection.execute(f"PRAGMA table_info({name})")
+            ]
+            indexes = sorted(
+                str(row["name"]) for row in connection.execute(f"PRAGMA index_list({name})")
+            )
+            count = connection.execute(f"SELECT COUNT(*) AS count FROM {name}").fetchone()
+            tables.append(
+                {
+                    "name": name,
+                    "rows": int(count["count"]),
+                    "columns": columns,
+                    "indexes": indexes,
+                }
+            )
+        return tables
+
     # ------------------------------------------------------------------- jobs
 
     def upsert_job(self, job: JobRecord) -> None:
