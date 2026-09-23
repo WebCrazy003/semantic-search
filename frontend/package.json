@@ -13,8 +13,11 @@
     "dev:lan": "vite --host 0.0.0.0"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.4",
+    "antd": "^6.6.5",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",

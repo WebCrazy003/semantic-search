@@ -34,9 +34,11 @@ describe('SearchBar', () => {
     expect(onSearch).not.toHaveBeenCalled()
   })
 
-  it('disables the button while a search is running', () => {
+  it('shows the button as busy while a search is running', () => {
     render(<SearchBar onSearch={vi.fn()} busy />)
-    expect(screen.getByRole('button', { name: /searching/i })).toBeDisabled()
+    // antd renders a loading button as aria-disabled rather than disabled, so it keeps
+    // its place in the tab order instead of dropping focus mid-search.
+    expect(screen.getByRole('button', { name: /search/i })).toHaveClass('ant-btn-loading')
   })
 
   it('searches when Enter is pressed in the box', async () => {

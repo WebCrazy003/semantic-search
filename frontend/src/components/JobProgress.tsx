@@ -1,13 +1,21 @@
 // frontend/src/components/JobProgress.tsx
+import { PlayCircleOutlined } from '@ant-design/icons'
+import { Alert, Button, Col, Progress, Row, Space, Statistic, Tag, Typography } from 'antd'
 import type { IndexStatus } from '../services/api'
 import { CountUp } from './CountUp'
 import { DeviceStatus } from './DeviceStatus'
-import { StatusBadge } from './StatusBadge'
 
 interface Props {
   status: IndexStatus | null
   busy: boolean
   onIndex: () => void
+}
+
+const TONE: Record<string, string> = {
+  running: 'processing',
+  completed: 'success',
+  failed: 'error',
+  idle: 'default',
 }
 
 export function JobProgress({ status, busy, onIndex }: Props) {
@@ -16,53 +24,43 @@ export function JobProgress({ status, busy, onIndex }: Props) {
   const processed = status?.processed_documents ?? 0
   const withinFile = status?.current_file_progress ?? 0
 
-  // Counting the part-finished file makes the bar move while one long document is
-  // being embedded, instead of standing still between whole files.
+  // Counting the part-finished file makes the bar move while one long document is being
+  // embedded, instead of standing still between whole files.
   const fraction = total > 0 ? Math.min(1, (processed + withinFile) / total) : 0
   const percent = Math.round(fraction * 100)
-  // Before discovery finishes there is no total, so show a moving indeterminate bar.
+  // Before discovery finishes there is no total, so nothing sensible can be shown yet.
   const indeterminate = running && total === 0
 
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>Indexing job</h2>
+    <div className="job-progress">
+      <Space wrap className="index-actions">
+        <Button
+          type="primary"
+          icon={<PlayCircleOutlined aria-hidden="true" />}
+          loading={running}
+          disabled={running || busy}
+          onClick={onIndex}
+        >
+          {running ? 'Indexing…' : 'Index documents'}
+        </Button>
         {status && status.status !== 'idle' ? (
-          <StatusBadge status={status.status} pulse={running} />
+          <Tag color={TONE[status.status] ?? 'default'}>{status.status}</Tag>
         ) : null}
-      </div>
-
-      <div className="index-actions">
-        <button type="button" className="primary" onClick={onIndex} disabled={running || busy}>
-          {running ? (
-            <>
-              <span className="spinner" aria-hidden="true" />
-              Indexing…
-            </>
-          ) : (
-            'Index documents folder'
-          )}
-        </button>
         {status?.directory ? <code className="index-dir">{status.directory}</code> : null}
-      </div>
+      </Space>
 
       {status && status.status !== 'idle' ? (
         <>
-          <div className="progress-line">
-            <div
-              className={`progress${indeterminate ? ' indeterminate' : ''}`}
-              role="progressbar"
-              aria-label="Indexing progress"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={running ? percent : 100}
-            >
-              <span style={{ width: `${running ? percent : 100}%` }} />
-            </div>
-            <span className="progress-percent">{running ? `${percent}%` : 'done'}</span>
-          </div>
+          <Progress
+            percent={running ? percent : 100}
+            status={
+              status.status === 'failed' ? 'exception' : running ? 'active' : 'success'
+            }
+            format={() => (indeterminate ? 'scanning…' : running ? `${percent}%` : 'done')}
+            aria-label="Indexing progress"
+          />
 
-          <p className="progress-text" aria-live="polite">
+          <Typography.Paragraph aria-live="polite" className="progress-text">
             {running ? (
               <>
                 <strong>
@@ -78,74 +76,80 @@ export function JobProgress({ status, busy, onIndex }: Props) {
               </>
             ) : (
               <>
-                {status.status} — checked {total} file{total === 1 ? '' : 's'} in the folder,{' '}
-                <strong>
-                  indexed {status.indexed_documents}
-                </strong>
+                {status.status} — checked {total} file{total === 1 ? '' : 's'},{' '}
+                <strong>indexed {status.indexed_documents}</strong>
                 {status.skipped_documents > 0
                   ? `, ${status.skipped_documents} already up to date`
                   : ''}
               </>
             )}
-          </p>
+          </Typography.Paragraph>
 
-          <dl className="index-counters">
-            <Counter label="Passages" value={status.total_chunks} highlight={running} />
-            <Counter label="Indexed" value={status.indexed_documents} />
-            <Counter
-              label="Unchanged"
-              value={status.skipped_documents}
-              hint="Already indexed and not modified since, including duplicate copies of a file"
-            />
-            <Counter label="Unsupported" value={status.unsupported_documents} />
-            <Counter label="Failed" value={status.failed_documents} tone={status.failed_documents ? 'bad' : undefined} />
-            <Counter label="Removed" value={status.deleted_documents} />
-            <div>
-              <dt>Started by</dt>
-              <dd>{status.trigger === 'upload' ? 'import' : 'folder scan'}</dd>
-            </div>
-          </dl>
+          <Row gutter={[16, 8]} className="index-counters">
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Passages"
+                valueRender={() => <CountUp value={status.total_chunks} />}
+              />
+            </Col>
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Indexed"
+                valueRender={() => <CountUp value={status.indexed_documents} />}
+              />
+            </Col>
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Unchanged"
+                valueRender={() => <CountUp value={status.skipped_documents} />}
+              />
+            </Col>
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Unsupported"
+                valueRender={() => <CountUp value={status.unsupported_documents} />}
+              />
+            </Col>
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Failed"
+                valueRender={() => <CountUp value={status.failed_documents} />}
+                valueStyle={status.failed_documents ? { color: 'var(--error)' } : undefined}
+              />
+            </Col>
+            <Col xs={8} md={4}>
+              <Statistic
+                title="Removed"
+                valueRender={() => <CountUp value={status.deleted_documents} />}
+              />
+            </Col>
+          </Row>
         </>
       ) : (
-        <p className="hint empty">No job has run in this session yet.</p>
+        <Typography.Text type="secondary">No job has run in this session yet.</Typography.Text>
       )}
 
       {status && status.failures.length > 0 ? (
-        <ul className="index-failures">
-          {status.failures.map((failure) => (
-            <li key={failure.filepath}>
-              <strong>{failure.filename}</strong>
-              <span>
-                {failure.error_type}: {failure.error_message}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <Alert
+          type="warning"
+          showIcon
+          message={`${status.failures.length} file${
+            status.failures.length === 1 ? '' : 's'
+          } could not be read`}
+          description={
+            <ul className="index-failures">
+              {status.failures.map((failure) => (
+                <li key={failure.filepath}>
+                  <strong>{failure.filename}</strong> — {failure.error_type}:{' '}
+                  {failure.error_message}
+                </li>
+              ))}
+            </ul>
+          }
+        />
       ) : null}
-      <DeviceStatus />
-    </section>
-  )
-}
 
-function Counter({
-  label,
-  value,
-  highlight = false,
-  tone,
-  hint,
-}: {
-  label: string
-  value: number
-  highlight?: boolean
-  tone?: string
-  hint?: string
-}) {
-  return (
-    <div className={`counter${highlight ? ' live' : ''}${tone ? ` ${tone}` : ''}`} title={hint}>
-      <dt>{label}</dt>
-      <dd>
-        <CountUp value={value} />
-      </dd>
+      <DeviceStatus />
     </div>
   )
 }

@@ -274,3 +274,129 @@ export function addFolder(path: string): Promise<FolderSummary> {
 export function removeFolder(path: string): Promise<RemovedFolder> {
   return call<RemovedFolder>(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
 }
+
+// ------------------------------------------------------------------ admin
+// Read-only introspection, used only by the admin page.
+
+export interface ExtractedBlock {
+  kind: string
+  text: string
+}
+
+export interface ExtractedPageView {
+  page_number: number
+  text: string
+  char_count: number
+  blocks: ExtractedBlock[]
+}
+
+export interface ExtractionResponse {
+  document_id: string
+  filename: string
+  file_type: string
+  filepath: string
+  pages: number
+  pages_approximate: boolean
+  language?: string | null
+  title?: string | null
+  extracted_ms: number
+  page: number
+  per_page: number
+  file_hash_matches_manifest: boolean
+  page_views: ExtractedPageView[]
+}
+
+export interface ChunkView {
+  chunk_index: number
+  point_id: string
+  page_start: number
+  page_end: number
+  heading?: string | null
+  kind?: string | null
+  token_count?: number | null
+  char_count: number
+  text: string
+  overlap_start: number
+  overlap_with_previous: number
+}
+
+export interface ChunkListResponse {
+  document_id: string
+  filename: string
+  total_chunks: number
+  total_tokens: number
+  pages_covered: number
+  offset: number
+  limit: number
+  chunks: ChunkView[]
+}
+
+export interface PayloadField {
+  name: string
+  type: string
+  indexed: boolean
+  description: string
+}
+
+export interface IndexSchemaResponse {
+  qdrant: {
+    collection: string
+    exists: boolean
+    vector_size?: number | null
+    distance?: string | null
+    points_count?: number | null
+    segments_count?: number | null
+    status?: string | null
+    payload_indexes: string[]
+    payload_fields: PayloadField[]
+  }
+  manifest: {
+    path: string
+    tables: {
+      name: string
+      rows: number
+      columns: { name: string; type: string; notnull: boolean; pk: boolean }[]
+      indexes: string[]
+    }[]
+    status_breakdown: Record<string, number>
+  }
+  chunking: {
+    target_tokens: number
+    max_tokens: number
+    min_tokens: number
+    overlap_tokens: number
+    preserve_headings: boolean
+    repeat_heading: boolean
+    allow_cross_page: boolean
+    prefer_paragraph_boundaries: boolean
+    prefer_sentence_boundaries: boolean
+  }
+  embedding: {
+    model: string
+    vector_size: number
+    device?: string | null
+    device_name?: string | null
+    precision?: string | null
+    max_seq_length: number
+  }
+}
+
+export function getIndexSchema(): Promise<IndexSchemaResponse> {
+  return call<IndexSchemaResponse>('/api/admin/index/schema')
+}
+
+export function getExtraction(
+  documentId: string,
+  page = 1,
+  perPage = 5,
+): Promise<ExtractionResponse> {
+  return call<ExtractionResponse>(
+    `/api/admin/documents/${documentId}/extraction?page=${page}&per_page=${perPage}`,
+  )
+}
+
+export function getChunks(documentId: string, offset = 0, limit = 50): Promise<ChunkListResponse> {
+  return call<ChunkListResponse>(
+    `/api/admin/documents/${documentId}/chunks?offset=${offset}&limit=${limit}`,
+  )
+}

@@ -92,6 +92,7 @@ export function makeFolder(overrides: Partial<FolderSummary> = {}): FolderSummar
 export function makeLibrary(overrides: Partial<Library> = {}): Library {
   return {
     documents: [],
+    loaded: true,
     folders: [],
     status: makeStatus(),
     jobs: [],

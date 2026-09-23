@@ -1,59 +1,79 @@
 // frontend/src/App.tsx
-import { useState } from 'react'
-import { useLibrary } from './hooks/useLibrary'
+import { FileSearchOutlined, FolderOpenOutlined, SettingOutlined } from '@ant-design/icons'
+import { Button, Layout, Space, Tooltip, Typography } from 'antd'
+import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { AdminPage } from './pages/AdminPage'
 import { DocumentsPage } from './pages/DocumentsPage'
-import { IndexingPage } from './pages/IndexingPage'
+import { HeroPage } from './pages/HeroPage'
 import { SearchPage } from './pages/SearchPage'
+import { SettingsPage } from './pages/SettingsPage'
 import './styles.css'
 
-type Tab = 'search' | 'documents' | 'indexing'
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'search', label: 'Search' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'indexing', label: 'Indexing' },
-]
+const { Header, Content, Footer } = Layout
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('search')
-  const library = useLibrary()
+  const navigate = useNavigate()
 
   return (
-    <div className="app">
-      <header>
-        <h1>Semantic PDF Search</h1>
-        <nav>
-          {TABS.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              className={tab === entry.id ? 'active' : ''}
-              aria-current={tab === entry.id ? 'page' : undefined}
-              onClick={() => setTab(entry.id)}
-            >
-              {entry.label}
-            </button>
-          ))}
+    <Layout className="app-shell">
+      <Header className="app-header">
+        <NavLink to="/" className="brand">
+          <FileSearchOutlined aria-hidden="true" />
+          <Typography.Text strong className="brand-name">
+            Semantic Document Search
+          </Typography.Text>
+        </NavLink>
+
+        {/* A landmark, so the two nav buttons are distinguishable from the identically
+            named Search button on the search page itself. */}
+        <nav aria-label="Main">
+          <Space size="small" className="app-nav">
+            <NavLink to="/search" className="nav-link">
+              {({ isActive }) => (
+                <Button
+                  type={isActive ? 'default' : 'text'}
+                  icon={<FileSearchOutlined aria-hidden="true" />}
+                >
+                  Search
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/documents" className="nav-link">
+              {({ isActive }) => (
+                <Button
+                  type={isActive ? 'default' : 'text'}
+                  icon={<FolderOpenOutlined aria-hidden="true" />}
+                >
+                  Documents
+                </Button>
+              )}
+            </NavLink>
+            <Tooltip title="Settings">
+              <Button
+                type="text"
+                shape="circle"
+                aria-label="Settings"
+                icon={<SettingOutlined aria-hidden="true" />}
+                onClick={() => navigate('/settings')}
+              />
+            </Tooltip>
+          </Space>
         </nav>
-      </header>
+      </Header>
 
-      {/*
-        Every tab stays mounted and is hidden rather than unmounted, so a search and its
-        results, a chosen file, or a scroll position all survive switching tabs.
-      */}
-      <main>
-        <div hidden={tab !== 'search'}>
-          <SearchPage />
-        </div>
-        <div hidden={tab !== 'documents'}>
-          <DocumentsPage library={library} />
-        </div>
-        <div hidden={tab !== 'indexing'}>
-          <IndexingPage library={library} />
-        </div>
-      </main>
+      <Content className="app-content">
+        <Routes>
+          <Route path="/" element={<HeroPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/documents" element={<DocumentsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          {/* Anything else, including the old #/indexing, lands on the hero. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Content>
 
-      <footer>Runs entirely on this machine. No document leaves it.</footer>
-    </div>
+      <Footer className="app-footer">Runs entirely on this machine. No document leaves it.</Footer>
+    </Layout>
   )
 }

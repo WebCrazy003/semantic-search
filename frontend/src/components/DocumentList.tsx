@@ -1,9 +1,8 @@
 // frontend/src/components/DocumentList.tsx
-import { useMemo, useState } from 'react'
-import { usePagination } from '../hooks/usePagination'
+import { DownloadOutlined, ExportOutlined } from '@ant-design/icons'
+import { Button, Empty, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import type { ColumnsType } from 'antd/es/table'
 import { documentFileUrl, type DocumentSummary } from '../services/api'
-import { Pagination } from './Pagination'
-import { StatusBadge } from './StatusBadge'
 
 interface Props {
   documents: DocumentSummary[]
@@ -11,179 +10,159 @@ interface Props {
   onRemove?: (documentId: string) => void
 }
 
-type SortKey = 'filename' | 'file_size' | 'pages' | 'chunks' | 'language' | 'status' | 'indexed_at'
-
-const COLUMNS: { key: SortKey; label: string; numeric?: boolean }[] = [
-  { key: 'filename', label: 'File' },
-  { key: 'file_size', label: 'Size', numeric: true },
-  { key: 'pages', label: 'Pages', numeric: true },
-  { key: 'chunks', label: 'Passages', numeric: true },
-  { key: 'language', label: 'Language' },
-  { key: 'status', label: 'Status' },
-  { key: 'indexed_at', label: 'Indexed' },
-]
+const STATUS_TONE: Record<string, string> = {
+  indexed: 'success',
+  skipped: 'default',
+  unsupported: 'warning',
+  failed: 'error',
+}
 
 export function DocumentList({ documents, busy = false, onRemove }: Props) {
-  const [confirming, setConfirming] = useState<string | null>(null)
-  const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({
-    key: 'filename',
-    ascending: true,
-  })
-
-  const sorted = useMemo(() => {
-    const rows = [...documents]
-    rows.sort((left, right) => compare(left[sort.key], right[sort.key]))
-    return sort.ascending ? rows : rows.reverse()
-  }, [documents, sort])
-
-  const paged = usePagination(sorted, 10)
-
   if (documents.length === 0) {
     return (
-      <p className="hint empty">
-        No documents indexed yet. Import PDF or Word files on the Indexing tab, or put them in
-        the documents folder and run a job.
-      </p>
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="No documents indexed yet. Add a folder or import files above, then index."
+      />
     )
   }
 
-  function toggle(key: SortKey) {
-    setSort((current) =>
-      current.key === key ? { key, ascending: !current.ascending } : { key, ascending: true },
-    )
+  const columns: ColumnsType<DocumentSummary> = [
+    {
+      title: 'File',
+      dataIndex: 'filename',
+      sorter: (left, right) => left.filename.localeCompare(right.filename),
+      defaultSortOrder: 'ascend',
+      render: (_: string, document: DocumentSummary) => (
+        <div className="doc-cell">
+          <Space size={4} wrap>
+            {document.status === 'failed' ? (
+              <Typography.Text>{document.filename}</Typography.Text>
+            ) : (
+              <Typography.Link
+                href={documentFileUrl(document.document_id)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {document.filename}{' '}
+                {document.file_type === 'docx' ? <DownloadOutlined /> : <ExportOutlined />}
+              </Typography.Link>
+            )}
+            {document.file_type === 'docx' ? <Tag>DOCX</Tag> : null}
+          </Space>
+          {document.title ? (
+            <Typography.Text type="secondary" className="doc-title">
+              {document.title}
+            </Typography.Text>
+          ) : null}
+          {document.error_message ? (
+            <Typography.Text type="danger" className="doc-error">
+              {document.error_message}
+            </Typography.Text>
+          ) : null}
+          {document.alt_filepaths.length > 0 ? (
+            <Typography.Text type="secondary" className="doc-title">
+              also at {document.alt_filepaths.length} other path
+              {document.alt_filepaths.length === 1 ? '' : 's'}
+            </Typography.Text>
+          ) : null}
+          <Typography.Text type="secondary" className="doc-path" title={document.filepath}>
+            {document.filepath}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: 'Size',
+      dataIndex: 'file_size',
+      align: 'right',
+      sorter: (left, right) => left.file_size - right.file_size,
+      render: (bytes: number) => formatSize(bytes),
+    },
+    {
+      title: 'Pages',
+      dataIndex: 'pages',
+      align: 'right',
+      sorter: (left, right) => left.pages - right.pages,
+      render: (pages: number, document: DocumentSummary) =>
+        document.pages_approximate ? (
+          <Tooltip title="Approximate: a Word file has no fixed pages">~{pages}</Tooltip>
+        ) : (
+          pages
+        ),
+    },
+    {
+      title: 'Passages',
+      dataIndex: 'chunks',
+      align: 'right',
+      sorter: (left, right) => left.chunks - right.chunks,
+    },
+    {
+      title: 'Language',
+      dataIndex: 'language',
+      render: (language: string | null) => language ?? '—',
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      sorter: (left, right) => left.status.localeCompare(right.status),
+      render: (status: string) => <Tag color={STATUS_TONE[status] ?? 'default'}>{status}</Tag>,
+    },
+    {
+      title: 'Indexed',
+      dataIndex: 'indexed_at',
+      sorter: (left, right) => String(left.indexed_at).localeCompare(String(right.indexed_at)),
+      render: (iso: string | null) => formatTime(iso),
+    },
+  ]
+
+  if (onRemove) {
+    columns.push({
+      title: 'Action',
+      key: 'action',
+      render: (_: unknown, document: DocumentSummary) => (
+        <Popconfirm
+          title="Remove from the index?"
+          description="The file stays in its folder, so the next job picks it up again."
+          okText="Remove"
+          okButtonProps={{ danger: true }}
+          onConfirm={() => onRemove(document.document_id)}
+          disabled={busy}
+        >
+          <Button
+            type="text"
+            danger
+            size="small"
+            disabled={busy}
+            aria-label={`Remove ${document.filename} from the index`}
+          >
+            Remove
+          </Button>
+        </Popconfirm>
+      ),
+    })
   }
 
   return (
-    <>
-      <div className="table-wrap">
-        <table className="documents">
-          <thead>
-            <tr>
-              {COLUMNS.map((column) => (
-                <th
-                  key={column.key}
-                  className={column.numeric ? 'numeric' : undefined}
-                  aria-sort={
-                    sort.key === column.key
-                      ? sort.ascending
-                        ? 'ascending'
-                        : 'descending'
-                      : 'none'
-                  }
-                >
-                  <button type="button" className="sort" onClick={() => toggle(column.key)}>
-                    {column.label}
-                    <span className="sort-arrow" aria-hidden="true">
-                      {sort.key === column.key ? (sort.ascending ? '▲' : '▼') : '⇅'}
-                    </span>
-                  </button>
-                </th>
-              ))}
-              {onRemove ? <th>Action</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {paged.items.map((document) => (
-              <tr key={document.document_id}>
-                <td title={document.filepath}>
-                  {document.status === 'failed' ? (
-                    <span className="filename">{document.filename}</span>
-                  ) : (
-                    <a
-                      className="filename open-source"
-                      href={documentFileUrl(document.document_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {document.filename} {document.file_type === 'docx' ? '↓' : '↗'}
-                    </a>
-                  )}
-                  {document.file_type === 'docx' ? (
-                    <span className="badge subtle file-type">DOCX</span>
-                  ) : null}
-                  {document.title ? <span className="doc-title">{document.title}</span> : null}
-                  {document.error_message ? (
-                    <span className="doc-error">{document.error_message}</span>
-                  ) : null}
-                  {document.alt_filepaths.length > 0 ? (
-                    <span className="doc-title">
-                      also at {document.alt_filepaths.length} other path
-                      {document.alt_filepaths.length === 1 ? '' : 's'}
-                    </span>
-                  ) : null}
-                </td>
-                <td className="numeric">{formatSize(document.file_size)}</td>
-                <td
-                  className="numeric"
-                  title={
-                    document.pages_approximate
-                      ? 'Approximate: a Word file has no fixed pages'
-                      : undefined
-                  }
-                >
-                  {document.pages_approximate ? `~${document.pages}` : document.pages}
-                </td>
-                <td className="numeric">{document.chunks}</td>
-                <td>{document.language ?? '-'}</td>
-                <td>
-                  <StatusBadge status={document.status} />
-                </td>
-                <td className="muted">{formatTime(document.indexed_at)}</td>
-                {onRemove ? (
-                  <td>
-                    {confirming === document.document_id ? (
-                      <span className="confirm-inline">
-                        <button
-                          type="button"
-                          className="destructive"
-                          disabled={busy}
-                          onClick={() => {
-                            setConfirming(null)
-                            onRemove(document.document_id)
-                          }}
-                        >
-                          Confirm
-                        </button>
-                        <button type="button" onClick={() => setConfirming(null)}>
-                          Cancel
-                        </button>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="ghost"
-                        disabled={busy}
-                        aria-label={`Remove ${document.filename} from the index`}
-                        onClick={() => setConfirming(document.document_id)}
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <Pagination paged={paged} label="documents" />
-    </>
+    <Table
+      size="small"
+      rowKey="document_id"
+      columns={columns}
+      dataSource={documents}
+      pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+      scroll={{ x: 'max-content' }}
+    />
   )
 }
 
-function compare(left: unknown, right: unknown): number {
-  if (typeof left === 'number' && typeof right === 'number') return left - right
-  return String(left ?? '').localeCompare(String(right ?? ''), undefined, { numeric: true })
-}
-
 function formatSize(bytes: number): string {
-  if (!bytes) return '-'
+  if (!bytes) return '—'
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 function formatTime(iso?: string | null): string {
-  if (!iso) return '-'
+  if (!iso) return '—'
   const date = new Date(iso)
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }

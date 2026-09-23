@@ -31,6 +31,8 @@ const IDLE_POLL_MS = 5000
 
 export interface Library {
   documents: DocumentSummary[]
+  /** False until the first refresh has settled, so "empty" is not confused with "not asked yet". */
+  loaded: boolean
   folders: FolderSummary[]
   status: IndexStatus | null
   jobs: JobSummary[]
@@ -58,6 +60,7 @@ export function useLibrary(): Library {
   const [status, setStatus] = useState<IndexStatus | null>(null)
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [lastUpload, setLastUpload] = useState<UploadResult | null>(null)
   const [lastClear, setLastClear] = useState<ClearResult | null>(null)
@@ -78,6 +81,8 @@ export function useLibrary(): Library {
       setError(null)
     } catch (caught) {
       setError(message(caught, 'Could not reach the backend'))
+    } finally {
+      setLoaded(true)
     }
   }, [])
 
@@ -208,6 +213,7 @@ export function useLibrary(): Library {
 
   return {
     documents,
+    loaded,
     folders,
     status,
     jobs,

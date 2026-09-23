@@ -1,5 +1,8 @@
 // frontend/src/components/ImportPanel.tsx
-import { useRef, useState } from 'react'
+import { InboxOutlined } from '@ant-design/icons'
+import { Alert, Button, Collapse, Typography, Upload } from 'antd'
+import type { UploadFile } from 'antd'
+import { useState } from 'react'
 import type { UploadResult } from '../services/api'
 
 interface Props {
@@ -9,108 +12,6 @@ interface Props {
   onImport: (files: File[]) => void
 }
 
-export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
-  const [chosen, setChosen] = useState<File[]>([])
-  const input = useRef<HTMLInputElement>(null)
-
-  function pick(files: FileList | null) {
-    setChosen(files ? Array.from(files) : [])
-  }
-
-  function submit() {
-    onImport(chosen)
-    setChosen([])
-    if (input.current) input.current.value = ''
-  }
-
-  const blocked = busy || running
-
-  return (
-    <section className="panel">
-      <h2>Import PDF or Word files</h2>
-
-      <div className="import-row">
-        <input
-          ref={input}
-          type="file"
-          accept={ACCEPTED}
-          multiple
-          aria-label="PDF or Word files to import"
-          onChange={(event) => pick(event.target.files)}
-        />
-        <button type="button" onClick={submit} disabled={blocked || chosen.length === 0}>
-          {chosen.length > 1 ? `Import ${chosen.length} files and index` : 'Import and index'}
-        </button>
-      </div>
-
-      {chosen.length > 0 ? (
-        <ul className="chosen-files">
-          {chosen.map((file) => (
-            <li key={file.name}>
-              {file.name} <span className="muted">{formatSize(file.size)}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {running ? (
-        <p className="hint">A job is running. Importing is available again when it finishes.</p>
-      ) : (
-        <p className="hint">
-          Importing <strong>copies</strong> the files into the documents folder and then runs a
-          job. Use it for one-off files; for a folder you already keep documents in, add it above
-          instead and nothing is copied.
-        </p>
-      )}
-
-      {lastUpload ? (
-        <div className="upload-result">
-          {lastUpload.saved.length > 0 ? (
-            <p>
-              Imported {lastUpload.saved.length} file{lastUpload.saved.length === 1 ? '' : 's'}:{' '}
-              {lastUpload.saved.join(', ')}
-            </p>
-          ) : null}
-          {lastUpload.rejected.length > 0 ? (
-            <ul className="rejected" role="list">
-              {lastUpload.rejected.map((item) => (
-                <li key={item.filename}>
-                  <strong>{item.filename}</strong> was not imported: {item.reason}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-
-      <details className="limits">
-        <summary>Which files can be searched</summary>
-        <div className="limits-body">
-          <p className="works">Works</p>
-          <ul>
-            <li>PDFs whose text can be selected and copied in a PDF reader</li>
-            <li>Word documents saved as .docx</li>
-            <li>Chinese, Korean, English, and documents that mix them</li>
-            <li>Tables, which are kept whole with their header row</li>
-            <li>Files up to 200 MB each; several can be imported at once</li>
-          </ul>
-          <p className="works">Not supported in this version</p>
-          <ul>
-            <li>Scanned pages and photographs of pages, where the text is an image</li>
-            <li>Password-protected PDFs and Word files</li>
-            <li>Old Word files (.doc); open them in Word and save as .docx first</li>
-            <li>Damaged files</li>
-          </ul>
-          <p className="hint">
-            An unsupported file never stops a job. It is imported, listed on the Documents tab
-            with its reason, and everything else still gets indexed.
-          </p>
-        </div>
-      </details>
-    </section>
-  )
-}
-
 const ACCEPTED = [
   'application/pdf',
   '.pdf',
@@ -118,8 +19,118 @@ const ACCEPTED = [
   '.docx',
 ].join(',')
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
+  const [chosen, setChosen] = useState<UploadFile[]>([])
+  const blocked = busy || running
+
+  function submit() {
+    const files = chosen
+      .map((item) => item.originFileObj as File | undefined)
+      .filter((file): file is File => !!file)
+    onImport(files)
+    setChosen([])
+  }
+
+  return (
+    <div className="import-panel">
+      <Upload.Dragger
+        multiple
+        accept={ACCEPTED}
+        fileList={chosen}
+        disabled={blocked}
+        // The upload goes through our own API call on submit, so antd must not POST
+        // anything itself.
+        beforeUpload={() => false}
+        onChange={(info) => setChosen(info.fileList)}
+        onRemove={(file) => setChosen((current) => current.filter((item) => item.uid !== file.uid))}
+      >
+        <p className="ant-upload-drag-icon">
+          <InboxOutlined />
+        </p>
+        <p className="ant-upload-text">Drop PDF or Word files here, or click to choose</p>
+        <p className="ant-upload-hint">
+          Importing <strong>copies</strong> the files into the documents folder and then indexes
+          them. For a folder you already keep documents in, add the folder above instead and
+          nothing is copied.
+        </p>
+      </Upload.Dragger>
+
+      <Button
+        type="primary"
+        className="import-submit"
+        onClick={submit}
+        disabled={blocked || chosen.length === 0}
+      >
+        {chosen.length > 1 ? `Import ${chosen.length} files and index` : 'Import and index'}
+      </Button>
+
+      {running ? (
+        <Typography.Text type="secondary">
+          A job is running. Importing is available again when it finishes.
+        </Typography.Text>
+      ) : null}
+
+      {lastUpload && lastUpload.saved.length > 0 ? (
+        <Alert
+          type="success"
+          showIcon
+          message={`Imported ${lastUpload.saved.length} file${
+            lastUpload.saved.length === 1 ? '' : 's'
+          }`}
+          description={lastUpload.saved.join(', ')}
+        />
+      ) : null}
+
+      {lastUpload && lastUpload.rejected.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Some files were not imported"
+          description={
+            <ul className="rejected">
+              {lastUpload.rejected.map((item) => (
+                <li key={item.filename}>
+                  <strong>{item.filename}</strong>: {item.reason}
+                </li>
+              ))}
+            </ul>
+          }
+        />
+      ) : null}
+
+      <Collapse
+        ghost
+        size="small"
+        items={[
+          {
+            key: 'limits',
+            label: 'Which files can be searched',
+            children: (
+              <div className="limits-body">
+                <Typography.Text strong>Works</Typography.Text>
+                <ul>
+                  <li>PDFs whose text can be selected and copied in a PDF reader</li>
+                  <li>Word documents saved as .docx</li>
+                  <li>Chinese, Korean, English, and documents that mix them</li>
+                  <li>Tables, which are kept whole with their header row</li>
+                  <li>Files up to 200 MB each; several can be imported at once</li>
+                </ul>
+                <Typography.Text strong>Not supported in this version</Typography.Text>
+                <ul>
+                  <li>Scanned pages and photographs of pages, where the text is an image</li>
+                  <li>Password-protected PDFs and Word files</li>
+                  <li>Old Word files (.doc); open them in Word and save as .docx first</li>
+                  <li>Damaged files</li>
+                </ul>
+                <Typography.Text type="secondary">
+                  An unsupported file never stops a job. It is imported, listed below with its
+                  reason, and everything else still gets indexed.
+                </Typography.Text>
+              </div>
+            ),
+          },
+        ]}
+      />
+    </div>
+  )
 }

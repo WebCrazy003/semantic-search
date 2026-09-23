@@ -1,4 +1,6 @@
 // frontend/src/components/FolderPanel.tsx
+import { FolderOpenOutlined } from '@ant-design/icons'
+import { Button, Input, List, Popconfirm, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import type { FolderSummary } from '../services/api'
 
@@ -12,7 +14,6 @@ interface Props {
 
 export function FolderPanel({ folders, busy, running, onAdd, onRemove }: Props) {
   const [path, setPath] = useState('')
-  const [confirming, setConfirming] = useState<string | null>(null)
   const blocked = busy || running
 
   async function submit() {
@@ -20,93 +21,90 @@ export function FolderPanel({ folders, busy, running, onAdd, onRemove }: Props) 
   }
 
   return (
-    <section className="panel">
-      <h2>Folders</h2>
-
-      <p className="hint">
+    <div className="folder-panel">
+      <Typography.Paragraph type="secondary">
         A folder is read where it is. Nothing is copied, and the index stores the real path of
         every PDF and Word file, including the ones in subfolders.
-      </p>
+      </Typography.Paragraph>
 
-      <div className="folder-row">
-        <input
-          type="text"
+      <Space.Compact className="folder-row">
+        <Input
           aria-label="Folder path to index in place"
           placeholder="/Users/you/Documents/manuals"
+          prefix={<FolderOpenOutlined />}
           value={path}
           spellCheck={false}
           onChange={(event) => setPath(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              void submit()
-            }
+          onPressEnter={(event) => {
+            event.preventDefault()
+            void submit()
           }}
         />
-        <button type="button" onClick={() => void submit()} disabled={blocked || !path.trim()}>
+        <Button type="primary" onClick={() => void submit()} disabled={blocked || !path.trim()}>
           Add folder
-        </button>
-      </div>
+        </Button>
+      </Space.Compact>
 
-      <p className="hint small">
+      <Typography.Paragraph type="secondary" className="hint-small">
         Paste the full path. In Finder, right-click the folder, hold Option, and choose “Copy as
         Pathname”. The browser cannot read a folder you pick with a file dialog, which is why this
         is typed rather than browsed.
-      </p>
+      </Typography.Paragraph>
 
-      <ul className="folders">
-        {folders.map((folder) => (
-          <li key={folder.path} className={folder.readable ? undefined : 'missing'}>
-            <div className="folder-main">
-              <code>{folder.path}</code>
-              <span className="folder-meta">
-                {folder.is_default ? <span className="badge subtle">default</span> : null}
-                {folder.readable ? (
-                  <>
-                    {folder.document_count} document{folder.document_count === 1 ? '' : 's'} on
-                    disk ·{' '}
-                    {folder.indexed_documents} indexed
-                  </>
-                ) : (
-                  <span className="badge warn">
-                    <span className="dot" aria-hidden="true" />
-                    not readable
-                  </span>
-                )}
-              </span>
-            </div>
-
-            {folder.is_default ? null : confirming === folder.path ? (
-              <span className="confirm-inline">
-                <button
-                  type="button"
-                  className="destructive"
-                  disabled={blocked}
-                  onClick={() => {
-                    setConfirming(null)
-                    onRemove(folder.path)
-                  }}
-                >
-                  Remove {folder.indexed_documents} from the index
-                </button>
-                <button type="button" onClick={() => setConfirming(null)}>
-                  Cancel
-                </button>
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="ghost"
-                disabled={blocked}
-                aria-label={`Stop indexing ${folder.path}`}
-                onClick={() => setConfirming(folder.path)}
-              >
-                Remove
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+      <List
+        size="small"
+        dataSource={folders}
+        locale={{ emptyText: 'No folders registered.' }}
+        renderItem={(folder) => (
+          <List.Item
+            className={folder.readable ? undefined : 'folder-missing'}
+            actions={
+              folder.is_default
+                ? []
+                : [
+                    <Popconfirm
+                      key="remove"
+                      title="Stop indexing this folder?"
+                      description={`${folder.indexed_documents} document${
+                        folder.indexed_documents === 1 ? '' : 's'
+                      } will be removed from the index. The files stay on disk.`}
+                      okText="Remove"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => onRemove(folder.path)}
+                      disabled={blocked}
+                    >
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        disabled={blocked}
+                        aria-label={`Stop indexing ${folder.path}`}
+                      >
+                        Remove
+                      </Button>
+                    </Popconfirm>,
+                  ]
+            }
+          >
+            <List.Item.Meta
+              title={<code className="folder-path">{folder.path}</code>}
+              description={
+                <Space size={4} wrap>
+                  {folder.is_default ? <Tag>default</Tag> : null}
+                  {folder.readable ? (
+                    <Typography.Text type="secondary">
+                      {folder.document_count} document{folder.document_count === 1 ? '' : 's'} on
+                      disk · {folder.indexed_documents} indexed
+                    </Typography.Text>
+                  ) : (
+                    <Tag color="warning">not readable</Tag>
+                  )}
+                </Space>
+              }
+            />
+          </List.Item>
+        )}
+      />
+    </div>
   )
 }
