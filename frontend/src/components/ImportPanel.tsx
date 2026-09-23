@@ -50,8 +50,7 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
         <p className="ant-upload-text">Drop PDF or Word files here, or click to choose</p>
         <p className="ant-upload-hint">
           Importing <strong>copies</strong> the files into the documents folder and then indexes
-          them. For a folder you already keep documents in, add the folder above instead and
-          nothing is copied.
+          them, so everything searchable lives in one place. PDF and Word (.docx) files.
         </p>
       </Upload.Dragger>
 

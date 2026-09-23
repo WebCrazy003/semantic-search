@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SearchPage } from '../pages/SearchPage'
 import * as api from '../services/api'
 import { CARD_MAX_HEIGHT } from '../settings/settings'
-import { makeFolder, makeStatus } from './fixtures'
+import { makeStatus } from './fixtures'
 import { chooseOption, givenSettings, renderWithProviders } from './helpers'
 
 const response: api.SearchResponse = {
@@ -44,7 +44,6 @@ beforeEach(() => {
   vi.spyOn(api, 'getDocuments').mockResolvedValue([])
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
 })
 
 afterEach(() => {

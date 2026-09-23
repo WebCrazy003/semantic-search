@@ -8,10 +8,12 @@ from app.deps import Container, get_container
 from app.models.request_models import IndexRequest
 from app.models.response_models import (
     ClearIndexResponse,
+    DeviceUsageView,
     IndexStartedResponse,
     IndexStatusResponse,
     JobSummary,
 )
+from app.services.device_usage import usage_as_dict
 
 router = APIRouter(tags=["indexing"])
 
@@ -47,7 +49,18 @@ def start_indexing(
 
 @router.get("/index/status", response_model=IndexStatusResponse)
 def index_status(container: Container = Depends(get_container)) -> IndexStatusResponse:
-    return container.indexing.snapshot()
+    """The run's progress, and while it is running, what the GPU or CPU is doing.
+
+    The usage is sampled here rather than inside the indexing service: it is a property
+    of the machine, not of the job, and sampling it outside the service's state lock
+    keeps a slow reading from blocking the run.
+    """
+    snapshot = container.indexing.snapshot()
+    if snapshot.status != "running" or container.device_monitor is None:
+        return snapshot
+
+    usage = container.device_monitor.sample()
+    return snapshot.model_copy(update={"device": DeviceUsageView(**usage_as_dict(usage))})
 
 
 @router.get("/index/jobs", response_model=list[JobSummary])

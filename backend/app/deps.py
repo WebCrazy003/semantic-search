@@ -15,6 +15,7 @@ from qdrant_client import QdrantClient
 from app.config import Settings
 from app.logging_config import get_logger
 from app.services.chunk_service import ChunkConfig, Chunker
+from app.services.device_usage import DeviceUsageMonitor
 from app.services.docx_service import DocxService
 from app.services.embedding_service import BgeEmbeddingService, EmbeddingService
 from app.services.extractors import DocumentExtractor, ExtractorRegistry
@@ -39,6 +40,9 @@ class Container:
     extractors: ExtractorRegistry
     indexing: IndexingService
     search: SearchService
+    # Optional so a container of fakes needs no device; without it the status endpoint
+    # simply reports no usage.
+    device_monitor: DeviceUsageMonitor | None = None
 
     def close(self) -> None:
         self.manifest.close()
@@ -112,6 +116,8 @@ def build_container(settings: Settings) -> Container:
     manifest = ManifestService(settings.manifest_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
     extractors = build_extractors(settings)
+    describe = getattr(embedder, "device_info", None)
+    device = describe() if callable(describe) else None
     return Container(
         settings=settings,
         tokenizer=tokenizer,
@@ -133,6 +139,10 @@ def build_container(settings: Settings) -> Container:
             qdrant=qdrant,
             default_top_k=settings.default_top_k,
             max_top_k=settings.max_top_k,
+        ),
+        device_monitor=DeviceUsageMonitor(
+            device=device.device if device else "cpu",
+            name=device.name if device else None,
         ),
     )
 

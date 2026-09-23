@@ -34,6 +34,18 @@ export interface IndexFailure {
   timestamp: string
 }
 
+export interface DeviceUsage {
+  device: 'cuda' | 'mps' | 'cpu'
+  name?: string | null
+  memory_used_gb?: number | null
+  memory_total_gb?: number | null
+  memory_percent?: number | null
+  /** Percent of one core: a process using three cores fully reads 300. */
+  cpu_percent?: number | null
+  cpu_cores?: number | null
+  gpu_percent?: number | null
+}
+
 export interface IndexStatus {
   status: 'idle' | 'running' | 'completed' | 'failed'
   job_id: string | null
@@ -53,6 +65,8 @@ export interface IndexStatus {
   started_at: string | null
   finished_at: string | null
   failures: IndexFailure[]
+  /** Present only while a job is running. */
+  device?: DeviceUsage | null
 }
 
 export interface IndexStarted {

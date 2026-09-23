@@ -39,6 +39,11 @@ body {
   min-height: 100vh;
 }
 
+/*
+  The header bar is dark in both themes, so its contents have to be light in both.
+  Ant Design colours text for the page background, not for this bar, which in the light
+  theme left dark text on a dark bar.
+*/
 .app-header {
   display: flex;
   align-items: center;
@@ -48,18 +53,77 @@ body {
   position: sticky;
   top: 0;
   z-index: 10;
+  --header-text: rgba(255, 255, 255, 0.92);
+  --header-text-dim: rgba(255, 255, 255, 0.68);
+}
+
+.app-header .brand,
+.app-header .brand-name,
+.app-header .ant-typography,
+.app-header .anticon {
+  color: var(--header-text);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 18px;
   text-decoration: none;
 }
 
+.brand-name {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* The wordmark: deep navy and blue on the page, lightened for the dark header bar so
+   "Doc" does not disappear into it. */
+.brand-doc {
+  color: #12305c;
+}
+
+.brand-sage {
+  color: #1f86e8;
+}
+
+.app-header .brand-doc {
+  color: #ffffff;
+}
+
+.app-header .brand-sage {
+  color: #5cb0f7;
+}
+
+:root[data-theme='dark'] .brand-doc {
+  color: #dce9f8;
+}
+
 .nav-link {
   text-decoration: none;
+}
+
+/* Text buttons in the bar: legible at rest, clearly lit on hover. */
+.app-header .ant-btn-variant-text,
+.app-header .ant-btn-variant-text .anticon {
+  color: var(--header-text-dim);
+}
+
+.app-header .ant-btn-variant-text:not(:disabled):hover,
+.app-header .ant-btn-variant-text:not(:disabled):hover .anticon {
+  color: var(--header-text);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* The current page keeps antd's solid button, which supplies its own contrast. */
+.app-header .ant-btn-variant-outlined {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.app-header .ant-btn:focus-visible {
+  outline: 2px solid var(--header-text);
+  outline-offset: 2px;
 }
 
 .app-content {
@@ -103,8 +167,34 @@ body {
 
 .hero-title.ant-typography {
   margin: 0;
-  font-size: clamp(30px, 4vw, 46px);
-  line-height: 1.15;
+  font-size: clamp(34px, 5vw, 54px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.hero-tagline {
+  display: block;
+  margin-top: 6px;
+  font-size: clamp(17px, 2vw, 22px);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.hero-logo-panel {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(15, 45, 85, 0.12);
+  max-width: 380px;
+  width: 100%;
+}
+
+.hero-logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
 }
 
 .hero-lede.ant-typography {
@@ -243,9 +333,10 @@ body {
   border-radius: 2px;
 }
 
-.add-more {
-  margin-top: 12px;
-  width: 100%;
+.search-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .detail-panel {
@@ -253,6 +344,32 @@ body {
   top: 88px;
   max-height: calc(100vh - 120px);
   overflow: auto;
+}
+
+/* The panel enters from its left edge when a result is chosen. */
+.detail-panel .result-detail {
+  animation: detail-in 220ms ease-out;
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+:root[data-motion='reduced'] .detail-panel .result-detail {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-panel .result-detail {
+    animation: none;
+  }
 }
 
 .detail-empty {
@@ -584,15 +701,64 @@ body {
   margin-top: 16px;
 }
 
-.passage-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* Table of passages on the left, the chosen one in full on the right. */
+.passage-split {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
 }
 
-.passage-card.focused {
-  border-color: var(--ant-color-primary, #1677ff);
-  box-shadow: 0 0 0 1px var(--ant-color-primary, #1677ff) inset;
+@media (max-width: 1199px) {
+  .passage-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.passage-table {
+  min-width: 0;
+}
+
+.passage-pagination {
+  margin-top: 12px;
+}
+
+.passage-row {
+  cursor: pointer;
+}
+
+.passage-row.selected > td {
+  background: var(--surface-subtle);
+  box-shadow: inset 2px 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.page-group-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.page-group-cell .ant-typography:last-child {
+  font-size: 11px;
+}
+
+.passage-preview {
+  display: block;
+  max-width: 420px;
+  font-size: 12px;
+}
+
+.passage-detail {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+
+.passage-foot {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
 }
 
 .passage-heading {

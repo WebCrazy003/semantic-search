@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SettingsPage } from '../pages/SettingsPage'
 import * as api from '../services/api'
 import { DEFAULT_SETTINGS, STORAGE_KEY, coerceSettings } from '../settings/settings'
-import { makeFolder, makeStatus } from './fixtures'
+import { makeStatus } from './fixtures'
 import { chooseOption, givenSettings, renderWithProviders } from './helpers'
 
 function stored() {
@@ -16,7 +16,6 @@ beforeEach(() => {
   vi.spyOn(api, 'getDocuments').mockResolvedValue([])
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
   vi.spyOn(api, 'fetchReadiness').mockResolvedValue({
     status: 'ready',
     model_loaded: true,

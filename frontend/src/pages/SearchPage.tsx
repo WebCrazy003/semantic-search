@@ -91,19 +91,21 @@ export function SearchPage() {
         ))}
       </div>
 
-      <Button
-        type="dashed"
-        icon={<PlusOutlined aria-hidden="true" />}
-        className="add-more"
-        onClick={() => navigate('/documents')}
-      >
-        Add more documents
-      </Button>
     </>
   )
 
   return (
     <div className="page search-page">
+      <div className="search-page-actions">
+        <Button
+          type="dashed"
+          icon={<PlusOutlined aria-hidden="true" />}
+          onClick={() => navigate('/documents')}
+        >
+          Add more documents
+        </Button>
+      </div>
+
       <div className="search-controls">
         <SearchBar onSearch={(value) => void run(value)} busy={busy} initialValue={query} />
         <Space size="small" className="search-filters" wrap>
@@ -138,7 +140,13 @@ export function SearchPage() {
           <Col span={14}>{resultList}</Col>
           <Col span={10}>
             <Card className="detail-panel" size="small">
-              <ResultDetail hit={selected} query={response?.query} />
+              {/* Keyed on whether anything is selected, so the panel slides in once
+                  when it opens rather than replaying on every arrow-key move. */}
+              <ResultDetail
+                key={selected ? 'open' : 'empty'}
+                hit={selected}
+                query={response?.query}
+              />
             </Card>
           </Col>
         </Row>
@@ -148,7 +156,7 @@ export function SearchPage() {
           <Drawer
             open={!!selected}
             onClose={() => select(null)}
-            placement="right"
+            placement="left"
             width={Math.min(520, typeof window === 'undefined' ? 520 : window.innerWidth * 0.9)}
             title={selected?.filename}
           >

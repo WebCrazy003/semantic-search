@@ -4,6 +4,7 @@ import { Alert, Button, Col, Progress, Row, Space, Statistic, Tag, Typography } 
 import type { IndexStatus } from '../services/api'
 import { CountUp } from './CountUp'
 import { DeviceStatus } from './DeviceStatus'
+import { DeviceUsageMeter } from './DeviceUsageMeter'
 
 interface Props {
   status: IndexStatus | null
@@ -59,6 +60,9 @@ export function JobProgress({ status, busy, onIndex }: Props) {
             format={() => (indeterminate ? 'scanning…' : running ? `${percent}%` : 'done')}
             aria-label="Indexing progress"
           />
+
+          {/* Live while the job runs: the backend only samples the device then. */}
+          <DeviceUsageMeter usage={status.device} />
 
           <Typography.Paragraph aria-live="polite" className="progress-text">
             {running ? (
@@ -149,7 +153,7 @@ export function JobProgress({ status, busy, onIndex }: Props) {
         />
       ) : null}
 
-      <DeviceStatus />
+      {running ? null : <DeviceStatus />}
     </div>
   )
 }

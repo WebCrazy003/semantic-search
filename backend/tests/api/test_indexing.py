@@ -88,3 +88,41 @@ class TestFailureReporting:
         assert failure["filename"] == "broken.pdf"
         assert failure["error_message"]
         assert failure["timestamp"]
+
+
+class TestDeviceUsage:
+    """While a job runs the status carries what the GPU or CPU is doing."""
+
+    def test_an_idle_status_carries_no_usage(self, client: TestClient) -> None:
+        """Nothing is being computed, so there is nothing to report."""
+        assert client.get("/api/index/status").json()["device"] is None
+
+    def test_a_finished_status_carries_no_usage(self, client: TestClient) -> None:
+        client.post("/api/index", json={})
+        status = client.get("/api/index/status").json()
+        assert status["status"] == "completed"
+        assert status["device"] is None
+
+    def test_a_running_status_names_the_device(
+        self, client: TestClient, container: Container
+    ) -> None:
+        # The run happens in a background thread in production; here the state is set
+        # directly so the endpoint can be tested without racing a real job.
+        with container.indexing._state_lock:
+            container.indexing._state.status = "running"
+
+        device = client.get("/api/index/status").json()["device"]
+        assert device is not None
+        assert device["device"] == "cpu"
+        assert device["name"] == "CPU"
+        assert "cpu_percent" in device
+        assert "memory_percent" in device
+
+    def test_usage_is_left_out_when_no_monitor_is_configured(
+        self, client: TestClient, container: Container
+    ) -> None:
+        container.device_monitor = None
+        with container.indexing._state_lock:
+            container.indexing._state.status = "running"
+
+        assert client.get("/api/index/status").json()["device"] is None

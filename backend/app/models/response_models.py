@@ -63,6 +63,20 @@ class IndexFailure(BaseModel):
     timestamp: datetime
 
 
+class DeviceUsageView(BaseModel):
+    """How hard the machine is working. Attached to the indexing status the UI polls."""
+
+    device: str  # cuda | mps | cpu
+    name: str | None = None
+    memory_used_gb: float | None = None
+    memory_total_gb: float | None = None
+    memory_percent: float | None = None
+    # Percent of one core: a process using three cores fully reads 300.
+    cpu_percent: float | None = None
+    cpu_cores: int | None = None
+    gpu_percent: float | None = None
+
+
 class IndexStatusResponse(BaseModel):
     status: Literal["idle", "running", "completed", "failed"]
     job_id: str | None = None
@@ -82,6 +96,8 @@ class IndexStatusResponse(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     failures: list[IndexFailure] = []
+    # Present while a job runs, so the UI can show what the GPU or CPU is doing.
+    device: DeviceUsageView | None = None
 
 
 class DocumentSummary(BaseModel):

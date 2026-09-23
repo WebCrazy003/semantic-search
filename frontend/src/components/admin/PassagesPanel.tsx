@@ -1,12 +1,13 @@
 // frontend/src/components/admin/PassagesPanel.tsx
-import { Alert, Card, Empty, Pagination, Skeleton, Space, Statistic, Tag, Tooltip, Typography } from 'antd'
-import { useEffect, useRef, useState } from 'react'
+import { Alert, Card, Empty, Pagination, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
+import type { ColumnsType } from 'antd/es/table'
+import { useEffect, useMemo, useState } from 'react'
 import { getChunks, type ChunkListResponse, type ChunkView, type DocumentSummary } from '../../services/api'
 import { DocumentPicker } from './DocumentPicker'
 
 const LIMIT = 25
 
-/** How each passage was cut, and where it repeats the end of the one before it. */
+/** How each passage was cut, which page it came from, and what text it holds. */
 export function PassagesPanel({
   documents,
   documentId,
@@ -25,9 +26,9 @@ export function PassagesPanel({
   const setOffset = (next: number) => setPaging({ documentId, offset: next })
 
   const [data, setData] = useState<ChunkListResponse | null>(null)
+  const [selected, setSelected] = useState<ChunkView | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!documentId) return
@@ -36,11 +37,17 @@ export function PassagesPanel({
     setError(null)
     getChunks(documentId, offset, LIMIT)
       .then((result) => {
-        if (live) setData(result)
+        if (!live) return
+        setData(result)
+        // A link from a search result names the passage it came from; otherwise start
+        // at the first one, so the detail panel is never empty beside a full table.
+        const wanted = result.chunks.find((chunk) => chunk.chunk_index === focusChunk)
+        setSelected(wanted ?? result.chunks[0] ?? null)
       })
       .catch((caught: unknown) => {
         if (!live) return
         setData(null)
+        setSelected(null)
         setError(caught instanceof Error ? caught.message : 'Could not read the passages')
       })
       .finally(() => {
@@ -49,21 +56,75 @@ export function PassagesPanel({
     return () => {
       live = false
     }
-  }, [documentId, offset])
+  }, [documentId, offset, focusChunk])
 
-  // A link from a search result names the passage it came from, so scroll to it.
-  useEffect(() => {
-    if (focusChunk === null || !data) return
-    const target = listRef.current?.querySelector<HTMLElement>(`[data-chunk="${focusChunk}"]`)
-    target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [focusChunk, data])
+  /**
+   * Rows carry how many of them share their page, so the page column can span them.
+   * Grouping this way keeps one scannable table rather than one table per page.
+   */
+  const rows = useMemo(() => {
+    const chunks = data?.chunks ?? []
+    const perPage = new Map<number, number>()
+    for (const chunk of chunks) {
+      perPage.set(chunk.page_start, (perPage.get(chunk.page_start) ?? 0) + 1)
+    }
+    let previousPage: number | null = null
+    return chunks.map((chunk) => {
+      const first = chunk.page_start !== previousPage
+      previousPage = chunk.page_start
+      return { ...chunk, pageSpan: first ? (perPage.get(chunk.page_start) ?? 1) : 0 }
+    })
+  }, [data])
+
+  const columns: ColumnsType<(typeof rows)[number]> = [
+    {
+      title: 'Page',
+      dataIndex: 'page_start',
+      width: 90,
+      onCell: (row) => ({ rowSpan: row.pageSpan }),
+      render: (page: number, row) => (
+        <div className="page-group-cell">
+          <Typography.Text strong>
+            {row.page_start === row.page_end ? `Page ${page}` : `Pages ${page}–${row.page_end}`}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {row.pageSpan} passage{row.pageSpan === 1 ? '' : 's'}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    { title: '#', dataIndex: 'chunk_index', width: 60 },
+    {
+      title: 'Heading',
+      dataIndex: 'heading',
+      width: 160,
+      render: (heading: string | null) =>
+        heading ? (
+          <Typography.Text ellipsis={{ tooltip: heading }}>{heading}</Typography.Text>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    { title: 'Tokens', dataIndex: 'token_count', width: 80, align: 'right' },
+    { title: 'Characters', dataIndex: 'char_count', width: 96, align: 'right' },
+    {
+      title: 'Passage',
+      dataIndex: 'text',
+      render: (text: string) => (
+        <Typography.Text ellipsis={{ tooltip: false }} className="passage-preview">
+          {text}
+        </Typography.Text>
+      ),
+    },
+  ]
 
   return (
     <div className="admin-panel">
       <Typography.Paragraph type="secondary">
         A document is split into overlapping passages, and each passage is what gets embedded and
-        returned by a search. The tinted text at the start of a passage is repeated from the end of
-        the previous one, so a sentence that straddles a boundary can still be found.
+        returned by a search. Choose a row to read the whole passage; the tinted text in it is
+        repeated from the end of the previous one, so a sentence that straddles a boundary can
+        still be found.
       </Typography.Paragraph>
 
       <DocumentPicker documents={documents} value={documentId} onChange={onDocumentChange} />
@@ -86,30 +147,62 @@ export function PassagesPanel({
 
           <TokenHistogram chunks={data.chunks} />
 
-          <div className="passage-list" ref={listRef}>
-            {data.chunks.map((chunk) => (
-              <PassageCard
-                key={chunk.chunk_index}
-                chunk={chunk}
-                focused={focusChunk === chunk.chunk_index}
+          <div className="passage-split">
+            <div className="passage-table">
+              <Table
+                size="small"
+                rowKey="chunk_index"
+                columns={columns}
+                dataSource={rows}
+                pagination={false}
+                scroll={{ x: 'max-content' }}
+                rowClassName={(row) =>
+                  row.chunk_index === selected?.chunk_index ? 'passage-row selected' : 'passage-row'
+                }
+                onRow={(row) => ({
+                  onClick: () => setSelected(row),
+                  tabIndex: 0,
+                  'aria-selected': row.chunk_index === selected?.chunk_index,
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelected(row)
+                    }
+                  },
+                })}
               />
-            ))}
-          </div>
 
-          <Pagination
-            current={Math.floor(offset / LIMIT) + 1}
-            pageSize={LIMIT}
-            total={data.total_chunks}
-            showSizeChanger={false}
-            onChange={(page) => setOffset((page - 1) * LIMIT)}
-          />
+              <Pagination
+                className="passage-pagination"
+                current={Math.floor(offset / LIMIT) + 1}
+                pageSize={LIMIT}
+                total={data.total_chunks}
+                showSizeChanger={false}
+                onChange={(page) => setOffset((page - 1) * LIMIT)}
+              />
+            </div>
+
+            <PassageDetail chunk={selected} />
+          </div>
         </>
       ) : null}
     </div>
   )
 }
 
-function PassageCard({ chunk, focused }: { chunk: ChunkView; focused: boolean }) {
+/** The whole text of one passage, with the repeat from its predecessor marked. */
+function PassageDetail({ chunk }: { chunk: ChunkView | null }) {
+  if (!chunk) {
+    return (
+      <Card size="small" className="passage-detail">
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="Select a passage to read it in full"
+        />
+      </Card>
+    )
+  }
+
   // The repeat does not always start at character zero: with the heading repeated at
   // the top of each passage, it begins just after that heading.
   const start = chunk.overlap_start
@@ -121,11 +214,10 @@ function PassageCard({ chunk, focused }: { chunk: ChunkView; focused: boolean })
   return (
     <Card
       size="small"
-      data-chunk={chunk.chunk_index}
-      className={`passage-card${focused ? ' focused' : ''}`}
+      className="passage-detail"
       title={
         <Space size={4} wrap>
-          <Typography.Text strong>#{chunk.chunk_index}</Typography.Text>
+          <Typography.Text strong>Passage #{chunk.chunk_index}</Typography.Text>
           <Tag>
             {chunk.page_start === chunk.page_end
               ? `Page ${chunk.page_start}`
@@ -133,7 +225,6 @@ function PassageCard({ chunk, focused }: { chunk: ChunkView; focused: boolean })
           </Tag>
           {chunk.token_count ? <Tag>{chunk.token_count} tokens</Tag> : null}
           {chunk.kind ? <Tag>{chunk.kind}</Tag> : null}
-          <Typography.Text type="secondary">{chunk.char_count} characters</Typography.Text>
         </Space>
       }
     >
@@ -142,7 +233,8 @@ function PassageCard({ chunk, focused }: { chunk: ChunkView; focused: boolean })
           {chunk.heading}
         </Typography.Text>
       ) : null}
-      <p className="passage-text">
+
+      <p className="passage-text" data-chunk={chunk.chunk_index}>
         {before}
         {overlap ? (
           <Tooltip
@@ -155,6 +247,13 @@ function PassageCard({ chunk, focused }: { chunk: ChunkView; focused: boolean })
         ) : null}
         {rest}
       </p>
+
+      <Typography.Text type="secondary" className="passage-foot">
+        {chunk.char_count} characters
+        {chunk.overlap_with_previous > 0
+          ? ` · ${chunk.overlap_with_previous} repeated from the previous passage`
+          : null}
+      </Typography.Text>
     </Card>
   )
 }

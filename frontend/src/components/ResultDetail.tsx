@@ -51,6 +51,7 @@ export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: st
         </Typography.Text>
       ) : null}
 
+      {/* The passage is what the reader came for, so it gets the room, unclipped. */}
       <div className="detail-text">{highlight(body, query, settings.highlightTerms)}</div>
 
       <Space wrap className="detail-actions">
@@ -97,7 +98,8 @@ export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: st
             label: 'File',
             children: <Typography.Text copyable className="detail-path">{hit.filepath}</Typography.Text>,
           },
-          { key: 'id', label: 'Document id', children: <code>{hit.document_id}</code> },
+          // The document id is an internal hash. It identifies nothing the reader can
+          // act on, so it stays out of the panel; the admin page still shows it.
         ]}
       />
     </div>

@@ -2,14 +2,14 @@
 import { CloseOutlined } from '@ant-design/icons'
 import { Button, Card, Collapse, Divider, Typography } from 'antd'
 import type { Library } from '../hooks/useLibrary'
-import { FolderPanel } from './FolderPanel'
 import { ImportPanel } from './ImportPanel'
 import { JobHistory } from './JobHistory'
 import { JobProgress } from './JobProgress'
 
 /**
- * Everything the old Indexing tab did, in the card that opens when the aggregation
- * cards minimise: register a folder, import files, start a job, and watch it run.
+ * The card that opens when the aggregation cards minimise: import files, start a job,
+ * and watch it run. Files are imported into the documents folder rather than indexed
+ * from wherever they sit, so there is one place documents live and one thing to scan.
  */
 export function AddDocumentsCard({ library, onClose }: { library: Library; onClose: () => void }) {
   const running = library.status?.status === 'running'
@@ -29,17 +29,6 @@ export function AddDocumentsCard({ library, onClose }: { library: Library; onClo
         />
       }
     >
-      <Typography.Title level={5}>Folders</Typography.Title>
-      <FolderPanel
-        folders={library.folders}
-        busy={library.busy}
-        running={running}
-        onAdd={library.addLibraryFolder}
-        onRemove={(path) => void library.removeLibraryFolder(path)}
-      />
-
-      <Divider />
-
       <Typography.Title level={5}>Import files</Typography.Title>
       <ImportPanel
         busy={library.busy}

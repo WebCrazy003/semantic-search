@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DocumentsPage } from '../pages/DocumentsPage'
 import * as api from '../services/api'
-import { makeDocument, makeFolder, makeJob, makeStatus } from './fixtures'
+import { makeDocument, makeJob, makeStatus } from './fixtures'
 import { givenSettings, renderWithProviders } from './helpers'
 
 const documents = [
@@ -23,7 +23,6 @@ function givenLibrary(overrides: Partial<api.IndexStatus> = {}, docs = documents
   vi.spyOn(api, 'getDocuments').mockResolvedValue(docs)
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus(overrides))
   vi.spyOn(api, 'getJobs').mockResolvedValue([makeJob()])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
   vi.spyOn(api, 'fetchReadiness').mockResolvedValue({
     status: 'ready',
     model_loaded: true,
@@ -146,28 +145,25 @@ describe('adding documents', () => {
     expect(wrap).toHaveClass('no-motion')
   })
 
-  it('carries folders, import and indexing, so nothing from the old tab is lost', async () => {
+  it('carries import, indexing and history, so nothing from the old tab is lost', async () => {
     renderWithProviders(<DocumentsPage />)
     await ready()
     await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
     const card = await screen.findByTestId('add-documents-card')
 
-    expect(within(card).getByLabelText(/folder path/i)).toBeInTheDocument()
     expect(within(card).getByText(/drop pdf or word files here/i)).toBeInTheDocument()
     expect(within(card).getByRole('button', { name: /index documents/i })).toBeInTheDocument()
     expect(within(card).getByText(/recent jobs/i)).toBeInTheDocument()
   })
 
-  it('registers a folder', async () => {
-    const add = vi.spyOn(api, 'addFolder').mockResolvedValue(makeFolder())
-    vi.spyOn(api, 'startIndexing').mockResolvedValue({ status: 'started', directory: '/documents' })
+  it('no longer offers indexing a folder in place', async () => {
     renderWithProviders(<DocumentsPage />)
     await ready()
     await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
+    await screen.findByTestId('add-documents-card')
 
-    await userEvent.type(screen.getByLabelText(/folder path/i), '/Users/you/manuals')
-    await userEvent.click(screen.getByRole('button', { name: /add folder/i }))
-    await waitFor(() => expect(add).toHaveBeenCalledWith('/Users/you/manuals'))
+    expect(screen.queryByLabelText(/folder path/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /add folder/i })).not.toBeInTheDocument()
   })
 
   it('starts an indexing job', async () => {

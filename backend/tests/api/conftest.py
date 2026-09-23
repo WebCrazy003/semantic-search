@@ -14,6 +14,7 @@ from app.config import Settings
 from app.deps import Container, build_extractors
 from app.main import create_app
 from app.services.chunk_service import ChunkConfig, Chunker
+from app.services.device_usage import DeviceUsageMonitor
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
 from app.services.qdrant_service import QdrantService
@@ -69,6 +70,7 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
             default_top_k=settings.default_top_k,
             max_top_k=settings.max_top_k,
         ),
+        device_monitor=DeviceUsageMonitor(device="cpu", name="CPU"),
     )
 
 

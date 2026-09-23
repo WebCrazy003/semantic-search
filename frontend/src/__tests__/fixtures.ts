@@ -5,7 +5,6 @@ import { vi } from 'vitest'
 import type { Library } from '../hooks/useLibrary'
 import type {
   DocumentSummary,
-  FolderSummary,
   IndexStatus,
   JobSummary,
 } from '../services/api'
@@ -76,24 +75,10 @@ export function makeJob(overrides: Partial<JobSummary> = {}): JobSummary {
   }
 }
 
-export function makeFolder(overrides: Partial<FolderSummary> = {}): FolderSummary {
-  return {
-    path: '/Users/you/Documents/manuals',
-    added_at: '2026-09-20T12:00:00Z',
-    exists: true,
-    readable: true,
-    document_count: 12,
-    indexed_documents: 12,
-    is_default: false,
-    ...overrides,
-  }
-}
-
 export function makeLibrary(overrides: Partial<Library> = {}): Library {
   return {
     documents: [],
     loaded: true,
-    folders: [],
     status: makeStatus(),
     jobs: [],
     error: null,
@@ -104,8 +89,6 @@ export function makeLibrary(overrides: Partial<Library> = {}): Library {
     runIndexing: vi.fn().mockResolvedValue(undefined),
     importFiles: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
-    addLibraryFolder: vi.fn().mockResolvedValue(true),
-    removeLibraryFolder: vi.fn().mockResolvedValue(undefined),
     clearAll: vi.fn().mockResolvedValue(undefined),
     dismissError: vi.fn(),
     ...overrides,

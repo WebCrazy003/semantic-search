@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminPage } from '../pages/AdminPage'
 import * as api from '../services/api'
-import { makeDocument, makeFolder, makeStatus } from './fixtures'
+import { makeDocument, makeStatus } from './fixtures'
 import { renderWithProviders } from './helpers'
 
 const schema: api.IndexSchemaResponse = {
@@ -135,7 +135,6 @@ beforeEach(() => {
   ])
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
   vi.spyOn(api, 'getIndexSchema').mockResolvedValue(schema)
   vi.spyOn(api, 'getExtraction').mockResolvedValue(extraction)
   vi.spyOn(api, 'getChunks').mockResolvedValue(chunks)
@@ -247,32 +246,69 @@ describe('index structure', () => {
 })
 
 describe('passages', () => {
-  it('lists them in order with their page and token counts', async () => {
+  /** Click the table row for one passage; its preview text starts with the heading. */
+  async function chooseRow(index: number) {
+    const table = screen.getAllByRole('table')[0]
+    const rows = within(table).getAllByRole('row').slice(1)
+    await userEvent.click(rows[index])
+  }
+
+  it('lists them in a table, grouped by the page they came from', async () => {
     renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
-    expect(await screen.findByText('#0')).toBeInTheDocument()
-    expect(screen.getByText('#1')).toBeInTheDocument()
-    expect(screen.getByText('220 tokens')).toBeInTheDocument()
-    expect(screen.getByText('Pages 1–2')).toBeInTheDocument()
+    await screen.findByText('Passage #0')
+
+    const table = screen.getAllByRole('table')[0]
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(2)
+
+    // Both passages start on page 1, so one cell spans them and the other is dropped.
+    const pageCells = within(table).getAllByText(/^Page 1$/)
+    expect(pageCells).toHaveLength(1)
+    expect(within(table).getByText('2 passages')).toBeInTheDocument()
+  })
+
+  it('shows the page range when a passage spans a break', async () => {
+    renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
+    await screen.findByText('Passage #0')
+    await chooseRow(1)
+    expect(await screen.findByText('Pages 1–2')).toBeInTheDocument()
+  })
+
+  it('selects the first passage so the detail is never empty', async () => {
+    const { container } = renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
+    expect(await screen.findByText('Passage #0')).toBeInTheDocument()
+    const detail = container.querySelector('.passage-detail') as HTMLElement
+    expect(within(detail).getByText(/在更换滤芯之前/)).toBeInTheDocument()
+  })
+
+  it('shows the whole passage when one is chosen', async () => {
+    const { container } = renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
+    await screen.findByText('Passage #0')
+    await chooseRow(1)
+
+    expect(await screen.findByText('Passage #1')).toBeInTheDocument()
+    const detail = container.querySelector('.passage-detail') as HTMLElement
+    expect(within(detail).getByText(/然后拆下外壳/)).toBeInTheDocument()
   })
 
   it('marks the part repeated from the previous passage', async () => {
     const { container } = renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
-    await screen.findByText('#1')
+    await screen.findByText('Passage #0')
+    await chooseRow(1)
+
     const marks = container.querySelectorAll('mark.overlap')
     expect(marks).toHaveLength(1)
     expect(marks[0].textContent).toBe('必须先关闭主电源开关。')
   })
 
-  it('highlights the passage a search result linked to', async () => {
+  it('opens on the passage a search result linked to', async () => {
     renderWithProviders(<AdminPage />, '/admin?document=a&chunk=1&tab=passages')
-    await screen.findByText('#1')
-    const card = screen.getByText('#1').closest('.passage-card')
-    expect(card).toHaveClass('focused')
+    expect(await screen.findByText('Passage #1')).toBeInTheDocument()
   })
 
   it('shows the totals for the document', async () => {
     const { container } = renderWithProviders(<AdminPage />, '/admin?document=a&tab=passages')
-    await screen.findByText('#0')
+    await screen.findByText('Passage #0')
     // "Passages" is also the tab's name, so scope the query to the totals strip.
     const totals = container.querySelector('.passage-totals') as HTMLElement
     expect(within(totals).getByText('2')).toBeInTheDocument()
