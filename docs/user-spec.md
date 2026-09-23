@@ -1,4 +1,4 @@
-# Offline Semantic PDF Search: User Specification
+# DocSage: User Specification
 
 **Version:** MVP 1.0
 **Date:** 2026-09-20

@@ -1,4 +1,4 @@
-Offline Semantic PDF Search
+DocSage
 ===========================
 
 Semantic search over Chinese and Korean PDFs and Word files, running entirely on

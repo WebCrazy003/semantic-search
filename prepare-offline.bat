@@ -3,7 +3,7 @@ rem ===========================================================================
 rem  Build the offline release.
 rem
 rem  Run this ON A WINDOWS PC WITH AN INTERNET CONNECTION, from a copy of this
-rem  repository. It produces release\semantic-pdf-search-<version>-win64-offline,
+rem  repository. It produces release\docsage-<version>-win64-offline,
 rem  a self-contained folder that runs on any Windows PC with no network, no
 rem  Python, no Node, no Docker and no installation step.
 rem
@@ -11,7 +11,7 @@ rem      prepare-offline.bat        build the folder
 rem      prepare-offline.bat zip    build the folder and a .zip beside it
 rem ===========================================================================
 setlocal EnableExtensions EnableDelayedExpansion
-title Semantic PDF Search - build offline release
+title DocSage - build offline release
 cd /d "%~dp0"
 
 set "PY_VERSION=3.12"
@@ -43,7 +43,7 @@ rem ---------------------------------------------------------------- version
 rem The release version lives in the VERSION file at the repository root.
 set "VERSION=0.0.0"
 if exist "VERSION" set /p VERSION=<VERSION
-set "NAME=semantic-pdf-search-%VERSION%-win64-offline"
+set "NAME=docsage-%VERSION%-win64-offline"
 set "RELEASE=%CD%\release\%NAME%"
 echo   Version %VERSION%
 echo   Output  release\%NAME%
@@ -217,7 +217,7 @@ if exist "%BUILD%\vc_redist.x64.exe" (
     echo       NOTE  could not fetch vc_redist.x64.exe; run.bat will say so if it is needed
 )
 
->"%RELEASE%\VERSION.txt" echo Offline Semantic PDF Search %VERSION% (win64, offline)
+>"%RELEASE%\VERSION.txt" echo DocSage %VERSION% - find knowledge locally (win64, offline)
 >>"%RELEASE%\VERSION.txt" echo Built %DATE% %TIME% on %COMPUTERNAME%
 >>"%RELEASE%\VERSION.txt" echo Python %PY_VERSION%
 >>"%RELEASE%\VERSION.txt" echo PyTorch CUDA build %TORCH_CUDA%, NVIDIA driver 580 or newer for GPU indexing

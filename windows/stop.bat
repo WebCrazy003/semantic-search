@@ -1,13 +1,13 @@
 @echo off
-rem Offline Semantic PDF Search - stop. Documents and index are left untouched.
+rem DocSage - stop. Documents and index are left untouched.
 setlocal EnableExtensions EnableDelayedExpansion
-title Semantic PDF Search - stopping
+title DocSage - stopping
 cd /d "%~dp0"
 
 set "PORT=8000"
 
 echo ============================================================
-echo   Stopping Offline Semantic PDF Search
+echo   Stopping DocSage
 echo ============================================================
 echo.
 

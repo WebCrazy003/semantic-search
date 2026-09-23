@@ -1,7 +1,8 @@
 // frontend/src/App.tsx
 import { FileSearchOutlined, FolderOpenOutlined, SettingOutlined } from '@ant-design/icons'
-import { Button, Layout, Space, Tooltip, Typography } from 'antd'
+import { Button, Layout, Space, Tooltip } from 'antd'
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom'
+import { DocSageMark } from './components/DocSageMark'
 import { AdminPage } from './pages/AdminPage'
 import { DocumentsPage } from './pages/DocumentsPage'
 import { HeroPage } from './pages/HeroPage'
@@ -17,11 +18,12 @@ export default function App() {
   return (
     <Layout className="app-shell">
       <Header className="app-header">
-        <NavLink to="/" className="brand">
-          <FileSearchOutlined aria-hidden="true" />
-          <Typography.Text strong className="brand-name">
-            Semantic Document Search
-          </Typography.Text>
+        <NavLink to="/" className="brand" aria-label="DocSage, go to the start page">
+          <DocSageMark size={30} />
+          <span className="brand-name" aria-hidden="true">
+            <span className="brand-doc">Doc</span>
+            <span className="brand-sage">Sage</span>
+          </span>
         </NavLink>
 
         {/* A landmark, so the two nav buttons are distinguishable from the identically
@@ -73,7 +75,9 @@ export default function App() {
         </Routes>
       </Content>
 
-      <Footer className="app-footer">Runs entirely on this machine. No document leaves it.</Footer>
+      <Footer className="app-footer">
+        DocSage — find knowledge locally. Runs entirely on this machine; no document leaves it.
+      </Footer>
     </Layout>
   )
 }

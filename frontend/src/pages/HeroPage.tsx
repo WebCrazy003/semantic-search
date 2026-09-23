@@ -12,8 +12,6 @@ import { Button, Card, Col, Row, Space, Statistic, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useLibraryContext } from '../app/LibraryContext'
 import { CountUp } from '../components/CountUp'
-import { HeroArt } from '../components/HeroArt'
-import { useSettings } from '../settings/SettingsContext'
 
 const { Title, Paragraph, Text } = Typography
 
@@ -42,7 +40,6 @@ const FEATURES = [
 
 export function HeroPage() {
   const navigate = useNavigate()
-  const { settings } = useSettings()
   const { documents, loaded, error } = useLibraryContext()
 
   const indexed = documents.filter((document) => document.status === 'indexed')
@@ -61,11 +58,16 @@ export function HeroPage() {
               Runs offline, on this machine
             </Tag>
 
-            <Title className="hero-title">Find the right passage, not the right keyword.</Title>
+            <Title className="hero-title">
+              <span className="brand-doc">Doc</span>
+              <span className="brand-sage">Sage</span>
+              <span className="hero-tagline">Find knowledge locally.</span>
+            </Title>
 
             <Paragraph className="hero-lede">
-              Search your own PDF and Word documents by what they mean. Everything — the
-              documents, the language model and the index — stays on this computer.
+              Search your own PDF and Word documents by what they mean, not by the words they
+              happen to use. Everything — the documents, the language model and the index — stays
+              on this computer.
             </Paragraph>
 
             <Space size="middle" wrap>
@@ -92,7 +94,7 @@ export function HeroPage() {
               )}
               <Button
                 size="large"
-                icon={empty ? <SearchOutlined /> : <FolderOpenOutlined />}
+                icon={empty ? <SearchOutlined aria-hidden="true" /> : <FolderOpenOutlined aria-hidden="true" />}
                 className="hero-action"
                 onClick={() => navigate(empty ? '/search' : '/documents')}
               >
@@ -120,7 +122,17 @@ export function HeroPage() {
         </Col>
 
         <Col xs={24} lg={11} className="hero-art-col">
-          <HeroArt accent={settings.accent} />
+          {/* The logo is a raster with its own light background, so it sits on a panel
+              that makes that background read as part of the mark in either theme. */}
+          <div className="hero-logo-panel">
+            <img
+              className="hero-logo"
+              src="/docsage-logo.webp"
+              alt="DocSage: find knowledge locally. PDF, DOCX, private, semantic search."
+              width={1254}
+              height={1254}
+            />
+          </div>
         </Col>
       </Row>
 

@@ -1,9 +1,9 @@
 @echo off
-rem Offline Semantic PDF Search - prove the installation works.
+rem DocSage - prove the installation works.
 rem Imports every dependency, exercises the vector store, and loads the model
 rem with the network forced off. Run it after copying, or when something breaks.
 setlocal EnableExtensions
-title Semantic PDF Search - check
+title DocSage - check
 cd /d "%~dp0"
 
 set "PY=%~dp0runtime\python\python.exe"

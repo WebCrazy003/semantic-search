@@ -1,4 +1,4 @@
-# Offline Semantic PDF Search
+# DocSage — find knowledge locally
 
 Semantic search over Chinese and Korean PDFs and Word (.docx) files, running
 entirely on one machine. No
@@ -57,7 +57,7 @@ Run it on a Windows machine that has an internet connection:
     prepare-offline.bat zip      build the folder and a .zip beside it
 
 It installs uv and Node.js if they are missing, fetches a relocatable CPython, and
-writes everything into `release\semantic-pdf-search-<version>-win64-offline\`. The
+writes everything into `release\docsage-<version>-win64-offline\`. The
 version comes from the [VERSION](VERSION) file. Expect about 6 GB and 20 to 50
 minutes; re-runs reuse the downloaded model.
 

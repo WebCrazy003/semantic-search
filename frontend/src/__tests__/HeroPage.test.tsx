@@ -3,14 +3,13 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api'
-import { makeDocument, makeFolder, makeStatus } from './fixtures'
+import { makeDocument, makeStatus } from './fixtures'
 import { renderApp } from './helpers'
 
 function givenLibrary(documents: api.DocumentSummary[]) {
   vi.spyOn(api, 'getDocuments').mockResolvedValue(documents)
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
 }
 
 beforeEach(() => {
@@ -24,7 +23,7 @@ afterEach(() => {
 describe('HeroPage', () => {
   it('explains what the tool does and that it is local', async () => {
     renderApp()
-    expect(await screen.findByRole('heading', { name: /find the right passage/i })).toBeVisible()
+    expect(await screen.findByRole('heading', { name: /find knowledge locally/i })).toBeVisible()
     expect(screen.getByText(/runs offline, on this machine/i)).toBeInTheDocument()
   })
 
@@ -78,7 +77,6 @@ describe('with the backend down', () => {
     vi.spyOn(api, 'getDocuments').mockRejectedValue(new Error('Cannot reach the backend.'))
     vi.spyOn(api, 'getIndexStatus').mockRejectedValue(new Error('Cannot reach the backend.'))
     vi.spyOn(api, 'getJobs').mockRejectedValue(new Error('Cannot reach the backend.'))
-    vi.spyOn(api, 'getFolders').mockRejectedValue(new Error('Cannot reach the backend.'))
     renderApp()
     expect(await screen.findByText(/backend not reachable/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add your first documents/i })).toBeInTheDocument()

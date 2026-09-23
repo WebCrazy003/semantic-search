@@ -52,9 +52,12 @@ def create_app(container: Container | None = None, settings: Settings | None = N
             logger.info("shut down")
 
     application = FastAPI(
-        title="Offline Semantic PDF Search",
+        title="DocSage",
         version="0.1.0",
-        description="Local semantic search over Chinese and Korean PDFs. No cloud services.",
+        description=(
+            "Find knowledge locally: semantic search over your own PDF and Word "
+            "documents, in Chinese, Korean and English. No cloud services."
+        ),
         lifespan=lifespan,
     )
     application.add_middleware(

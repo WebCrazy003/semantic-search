@@ -1,9 +1,9 @@
 @echo off
-rem Offline Semantic PDF Search - start.
+rem DocSage - start.
 rem   run.bat        on this computer only
 rem   run.bat lan    also reachable from the local network, with no login
 setlocal EnableExtensions EnableDelayedExpansion
-title Semantic PDF Search - starting
+title DocSage - starting
 cd /d "%~dp0"
 
 rem Everything is found relative to this folder, so the release can live anywhere.
@@ -15,7 +15,7 @@ set "BIND=127.0.0.1"
 if /i "%~1"=="lan" set "BIND=0.0.0.0"
 
 echo ============================================================
-echo   Offline Semantic PDF Search
+echo   DocSage
 echo ============================================================
 echo.
 

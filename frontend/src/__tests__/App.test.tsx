@@ -3,14 +3,13 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../services/api'
-import { makeDocument, makeFolder, makeJob, makeStatus } from './fixtures'
+import { makeDocument, makeJob, makeStatus } from './fixtures'
 import { clickNav, renderApp } from './helpers'
 
 beforeEach(() => {
   vi.spyOn(api, 'getDocuments').mockResolvedValue([makeDocument()])
   vi.spyOn(api, 'getIndexStatus').mockResolvedValue(makeStatus())
   vi.spyOn(api, 'getJobs').mockResolvedValue([makeJob()])
-  vi.spyOn(api, 'getFolders').mockResolvedValue([makeFolder({ is_default: true })])
   vi.spyOn(api, 'fetchReadiness').mockResolvedValue({
     status: 'ready',
     model_loaded: true,
@@ -52,7 +51,7 @@ describe('routing', () => {
   it('opens on the hero page, not on search', async () => {
     renderApp()
     expect(
-      await screen.findByRole('heading', { name: /find the right passage/i }),
+      await screen.findByRole('heading', { name: /find knowledge locally/i }),
     ).toBeInTheDocument()
   })
 
@@ -69,13 +68,13 @@ describe('routing', () => {
   it('sends an unknown route back to the hero', async () => {
     renderApp('/indexing')
     expect(
-      await screen.findByRole('heading', { name: /find the right passage/i }),
+      await screen.findByRole('heading', { name: /find knowledge locally/i }),
     ).toBeInTheDocument()
   })
 
   it('has no tab bar', async () => {
     renderApp()
-    await screen.findByRole('heading', { name: /find the right passage/i })
+    await screen.findByRole('heading', { name: /find knowledge locally/i })
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
