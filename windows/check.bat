@@ -7,7 +7,14 @@ title DocSage - check
 cd /d "%~dp0"
 
 set "PY=%~dp0runtime\python\python.exe"
-set "PYTHONPATH=%~dp0runtime\lib"
+set "LIB=%~dp0runtime\lib"
+rem The libraries sit in a plain folder on PYTHONPATH, not a site-packages,
+rem so Python never runs the .pth files in it. pywin32 needs its: pywin32.pth
+rem is what puts win32\lib on sys.path, and pywintypes lives there. portalocker
+rem imports it to lock the embedded vector store, so without this the server
+rem dies on startup. Do by hand what that .pth would have done.
+set "PYTHONPATH=%LIB%;%LIB%\win32;%LIB%\win32\lib;%LIB%\Pythonwin"
+set "PATH=%LIB%\pywin32_system32;%PATH%"
 set "PYTHONHOME="
 
 echo ============================================================

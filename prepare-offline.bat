@@ -228,6 +228,9 @@ for %%F in (run.bat stop.bat check.bat README-FIRST.txt .env VERSION.txt) do (
 )
 if not exist "%RELEASE%\runtime\python\python.exe"   set "BROKEN=!BROKEN! runtime\python"
 if not exist "%RELEASE%\runtime\lib\fastapi"         set "BROKEN=!BROKEN! runtime\lib"
+rem portalocker locks the embedded vector store through pywintypes, which
+rem pywin32 installs under win32\lib. Without it the server cannot start.
+if not exist "%RELEASE%\runtime\lib\win32\lib\pywintypes.py" set "BROKEN=!BROKEN! runtime\lib\win32"
 if not exist "%RELEASE%\backend\app\main.py"         set "BROKEN=!BROKEN! backend\app"
 if not exist "%RELEASE%\frontend\dist\index.html"    set "BROKEN=!BROKEN! frontend\dist"
 if not exist "%RELEASE%\models\bge-m3\config.json"   set "BROKEN=!BROKEN! models\bge-m3"

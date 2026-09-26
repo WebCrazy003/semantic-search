@@ -8,7 +8,14 @@ cd /d "%~dp0"
 
 rem Everything is found relative to this folder, so the release can live anywhere.
 set "PY=%~dp0runtime\python\python.exe"
-set "PYTHONPATH=%~dp0runtime\lib"
+set "LIB=%~dp0runtime\lib"
+rem The libraries sit in a plain folder on PYTHONPATH, not a site-packages,
+rem so Python never runs the .pth files in it. pywin32 needs its: pywin32.pth
+rem is what puts win32\lib on sys.path, and pywintypes lives there. portalocker
+rem imports it to lock the embedded vector store, so without this the server
+rem dies on startup. Do by hand what that .pth would have done.
+set "PYTHONPATH=%LIB%;%LIB%\win32;%LIB%\win32\lib;%LIB%\Pythonwin"
+set "PATH=%LIB%\pywin32_system32;%PATH%"
 set "PYTHONHOME="
 set "PORT=8000"
 set "BIND=127.0.0.1"
@@ -23,6 +30,7 @@ rem ---------------------------------------------------------------- preflight
 set "MISSING="
 if not exist "%PY%"                        set "MISSING=!MISSING! runtime\python"
 if not exist "runtime\lib\fastapi"         set "MISSING=!MISSING! runtime\lib"
+if not exist "runtime\lib\win32\lib\pywintypes.py" set "MISSING=!MISSING! runtime\lib\win32"
 if not exist "models\bge-m3\config.json"   set "MISSING=!MISSING! models\bge-m3"
 if not exist "frontend\dist\index.html"    set "MISSING=!MISSING! frontend\dist"
 if not exist ".env"                        set "MISSING=!MISSING! .env"
@@ -56,7 +64,7 @@ if not errorlevel 1 (
 
 echo   Starting. Loading the embedding model takes a minute the first time.
 echo.
-start "SPS Server" cmd /k "title SPS Server & set PYTHONPATH=%~dp0runtime\lib& "%PY%" -m uvicorn app.main:app --app-dir backend --host %BIND% --port %PORT%"
+start "SPS Server" cmd /k "title SPS Server & "%PY%" -m uvicorn app.main:app --app-dir backend --host %BIND% --port %PORT%"
 
 call :wait_url "http://127.0.0.1:%PORT%/api/health" 300
 if errorlevel 1 (
