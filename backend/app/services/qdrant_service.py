@@ -20,21 +20,25 @@ from app.models.domain import Chunk, DocumentMeta
 from app.models.request_models import SearchFilters
 from app.models.response_models import SearchHit
 from app.services.extractors import file_type_for
+from app.services.ownership import LIBRARY, PRIVATE, PUBLIC, AccessScope
 
 logger = get_logger("qdrant")
 
 # Fixed namespace: changing it orphans every existing point, so never change it.
 _POINT_NAMESPACE = uuid.UUID("1b4d8c0a-3e6f-4a2b-9c7d-5f8e1a2b3c4d")
 
-_INDEXED_PAYLOAD_FIELDS = ("document_id", "filename", "language")
+_INDEXED_PAYLOAD_FIELDS = ("document_id", "filename", "language", "owner_id", "visibility")
 _SUMMARY_FIELDS = [
     "document_id",
     "filename",
     "filepath",
+    "file_hash",
     "page_start",
     "page_end",
     "chunk_index",
     "language",
+    "owner_id",
+    "visibility",
 ]
 
 
@@ -117,7 +121,12 @@ class QdrantService:
     # ------------------------------------------------------------------ write
 
     def upsert_chunks(
-        self, chunks: list[Chunk], vectors: list[list[float]], document: DocumentMeta
+        self,
+        chunks: list[Chunk],
+        vectors: list[list[float]],
+        document: DocumentMeta,
+        owner_id: str = LIBRARY,
+        visibility: str = PRIVATE,
     ) -> None:
         if len(chunks) != len(vectors):
             raise ValueError(
@@ -130,7 +139,7 @@ class QdrantService:
             models.PointStruct(
                 id=point_id_for(chunk.document_id, chunk.chunk_index),
                 vector=vector,
-                payload=self._payload(chunk, document),
+                payload=self._payload(chunk, document, owner_id, visibility),
             )
             for chunk, vector in zip(chunks, vectors, strict=True)
         ]
@@ -140,7 +149,9 @@ class QdrantService:
         logger.info("upserted %d points for %s", len(points), document.filename)
 
     @staticmethod
-    def _payload(chunk: Chunk, document: DocumentMeta) -> dict[str, Any]:
+    def _payload(
+        chunk: Chunk, document: DocumentMeta, owner_id: str, visibility: str
+    ) -> dict[str, Any]:
         return {
             # Required by the specification
             "document_id": document.document_id,
@@ -159,6 +170,9 @@ class QdrantService:
             "title": document.title,
             "folder": document.folder,
             "kind": chunk.kind,
+            # Access. Search filters on both, so they are keyword-indexed.
+            "owner_id": owner_id,
+            "visibility": visibility,
         }
 
     def delete_document(self, document_id: str) -> None:
@@ -176,33 +190,82 @@ class QdrantService:
             wait=True,
         )
 
+    def set_visibility(self, document_id: str, visibility: str) -> None:
+        """Rewrite one document's visibility in place. Payload only: no re-embedding."""
+        self._client.set_payload(
+            collection_name=self._collection,
+            payload={"visibility": visibility},
+            points=models.Filter(must=[_match("document_id", document_id)]),
+            wait=True,
+        )
+
+    def assign_unowned_to_library(self) -> int:
+        """Give points indexed before accounts existed an owner and a visibility.
+
+        Runs at every startup and is a no-op once every point has an owner. Only the
+        payload is rewritten, so an upgrade re-embeds nothing.
+        """
+        if not self.collection_exists():
+            return 0
+        unowned = models.Filter(
+            must=[models.IsEmptyCondition(is_empty=models.PayloadField(key="owner_id"))]
+        )
+        count = int(
+            self._client.count(
+                collection_name=self._collection, count_filter=unowned, exact=True
+            ).count
+        )
+        if count:
+            self._client.set_payload(
+                collection_name=self._collection,
+                payload={"owner_id": LIBRARY, "visibility": PRIVATE},
+                points=unowned,
+                wait=True,
+            )
+        return count
+
     # ------------------------------------------------------------------- read
 
     def search(
-        self, vector: list[float], top_k: int, filters: SearchFilters | None = None
+        self,
+        vector: list[float],
+        top_k: int,
+        filters: SearchFilters | None = None,
+        scope: AccessScope | None = None,
     ) -> list[SearchHit]:
         response = self._client.query_points(
             collection_name=self._collection,
             query=vector,
             limit=top_k,
-            query_filter=self._build_filter(filters),
+            query_filter=self._build_filter(filters, scope),
             with_payload=True,
         )
         return [self._to_hit(point) for point in response.points]
 
     @staticmethod
-    def _build_filter(filters: SearchFilters | None) -> models.Filter | None:
-        if filters is None or filters.is_empty():
-            return None
-        conditions = [
-            models.FieldCondition(key=key, match=models.MatchValue(value=value))
-            for key, value in (
-                ("language", filters.language),
-                ("document_id", filters.document_id),
+    def _build_filter(
+        filters: SearchFilters | None, scope: AccessScope | None = None
+    ) -> models.Filter | None:
+        """The client's filters AND what the caller is allowed to read.
+
+        The access part comes from the session, never from the request, so no field a
+        client sends can widen it. owner_id and visibility in `filters` are admin-only
+        narrowing; the route clears them for everyone else.
+        """
+        conditions: list[models.Condition] = []
+        if filters is not None:
+            conditions.extend(
+                _match(key, value)
+                for key, value in (
+                    ("language", filters.language),
+                    ("document_id", filters.document_id),
+                    ("owner_id", filters.owner_id),
+                    ("visibility", filters.visibility),
+                )
+                if value is not None
             )
-            if value is not None
-        ]
-        return models.Filter(must=conditions)
+        conditions.extend(access_conditions(scope))
+        return models.Filter(must=conditions) if conditions else None
 
     @staticmethod
     def _to_hit(point: Any) -> SearchHit:
@@ -219,10 +282,19 @@ class QdrantService:
             language=payload.get("language"),
             file_type=file_type_for(str(payload.get("filename", ""))),
             text=str(payload.get("text", "")),
+            owner_id=payload.get("owner_id") or LIBRARY,
+            visibility=payload.get("visibility") or PRIVATE,
         )
 
-    def count_points(self) -> int:
-        return int(self._client.count(collection_name=self._collection, exact=True).count)
+    def count_points(self, scope: AccessScope | None = None) -> int:
+        conditions = access_conditions(scope)
+        return int(
+            self._client.count(
+                collection_name=self._collection,
+                count_filter=models.Filter(must=conditions) if conditions else None,
+                exact=True,
+            ).count
+        )
 
     def iter_document_payloads(self, page_size: int = 512) -> Iterator[dict[str, Any]]:
         """Stream per-point metadata without passage text.
@@ -303,3 +375,21 @@ class QdrantService:
 
     def close(self) -> None:
         self._client.close()
+
+
+def _match(key: str, value: str) -> models.FieldCondition:
+    return models.FieldCondition(key=key, match=models.MatchValue(value=value))
+
+
+def access_conditions(scope: AccessScope | None) -> list[models.Condition]:
+    """What a scope may read, as Qdrant conditions to AND with everything else."""
+    if scope is None or scope.unrestricted:
+        return []
+    assert scope.user_id is not None
+    if scope.mode == "mine":
+        return [_match("owner_id", scope.user_id)]
+    if scope.mode == "public":
+        return [_match("visibility", PUBLIC)]
+    return [
+        models.Filter(should=[_match("owner_id", scope.user_id), _match("visibility", PUBLIC)])
+    ]

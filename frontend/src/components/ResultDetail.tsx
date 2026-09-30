@@ -2,6 +2,7 @@
 import { DownloadOutlined, ExportOutlined, PartitionOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Empty, Progress, Space, Tag, Typography } from 'antd'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../app/AuthContext'
 import { documentFileUrl, type SearchHit } from '../services/api'
 import { useSettings } from '../settings/SettingsContext'
 import { highlight, pageLabel, withoutRepeatedHeading } from './passage'
@@ -9,6 +10,7 @@ import { highlight, pageLabel, withoutRepeatedHeading } from './passage'
 /** Everything about one result: the whole passage, every field, and the way in. */
 export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: string }) {
   const { settings } = useSettings()
+  const { isAdmin } = useAuth()
 
   if (!hit) {
     return (
@@ -41,6 +43,7 @@ export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: st
             <Tag>{pageLabel(hit)}</Tag>
             {hit.language ? <Tag>{hit.language}</Tag> : null}
             <Tag>{hit.file_type === 'docx' ? 'Word' : 'PDF'}</Tag>
+            {hit.visibility === 'public' ? <Tag color="blue">Public</Tag> : null}
           </Space>
         </div>
       </Space>
@@ -77,7 +80,7 @@ export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: st
           </Button>
         )}
 
-        {settings.showAdminLinks ? (
+        {isAdmin && settings.showAdminLinks ? (
           <Link to={`/admin?document=${hit.document_id}&chunk=${hit.chunk_index}&tab=passages`}>
             <Button icon={<PartitionOutlined aria-hidden="true" />}>Inspect passages</Button>
           </Link>
@@ -93,11 +96,35 @@ export function ResultDetail({ hit, query }: { hit: SearchHit | null; query?: st
           { key: 'pages', label: 'Page', children: pageLabel(hit) },
           { key: 'chunk', label: 'Passage number', children: `#${hit.chunk_index}` },
           { key: 'language', label: 'Language', children: hit.language ?? 'not detected' },
-          {
-            key: 'path',
-            label: 'File',
-            children: <Typography.Text copyable className="detail-path">{hit.filepath}</Typography.Text>,
-          },
+          ...(isAdmin
+            ? [
+                {
+                  key: 'owner',
+                  label: 'Owner',
+                  children: hit.owner_username ?? 'Library',
+                },
+              ]
+            : [
+                {
+                  key: 'whose',
+                  label: 'Whose',
+                  children: hit.is_mine ? 'Yours' : 'Shared with everyone',
+                },
+              ]),
+          // Another user's public document does not reveal where it is stored.
+          ...(hit.filepath
+            ? [
+                {
+                  key: 'path',
+                  label: 'File',
+                  children: (
+                    <Typography.Text copyable className="detail-path">
+                      {hit.filepath}
+                    </Typography.Text>
+                  ),
+                },
+              ]
+            : []),
           // The document id is an internal hash. It identifies nothing the reader can
           // act on, so it stays out of the panel; the admin page still shows it.
         ]}

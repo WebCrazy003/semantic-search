@@ -124,7 +124,7 @@ describe('state across navigation', () => {
     })
     renderApp('/search')
 
-    await userEvent.type(screen.getByRole('textbox', { name: /search/i }), '版本控制{Enter}')
+    await userEvent.type(await screen.findByRole('textbox', { name: /search/i }), '版本控制{Enter}')
     expect(await screen.findAllByText('04_版本控制.pdf')).not.toHaveLength(0)
 
     await clickNav('Documents')

@@ -10,12 +10,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, documents, folders, health, indexing, search
+from app.api import admin, auth, documents, folders, health, indexing, search, users
+from app.auth import CsrfHeaderMiddleware, active_user, admin_user
 from app.config import REPO_ROOT, Settings, get_settings
 from app.deps import Container, build_container
 from app.logging_config import configure_logging, get_logger
@@ -38,11 +40,18 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         built = container or build_container(resolved)
         application.state.container = built
         built.manifest.initialise()
+        built.access.initialise()
+        built.access.purge_expired(timedelta(days=resolved.auth_session_idle_days))
         # A job left 'running' by a killed process would otherwise block the UI forever.
         abandoned = built.manifest.abandon_running_jobs()
         if abandoned:
             logger.warning("marked %d interrupted indexing job(s) as failed", abandoned)
         built.qdrant.ensure_collection()
+        # Passages indexed before accounts existed have no owner. Payload only: an
+        # upgrade re-embeds nothing, and this is a no-op on every later start.
+        assigned = built.qdrant.assign_unowned_to_library()
+        if assigned:
+            logger.info("assigned %d existing passages to the library", assigned)
         built.embedder.warmup()
         logger.info("ready on %s:%d", resolved.api_host, resolved.api_port)
         try:
@@ -64,16 +73,25 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         CORSMiddleware,
         allow_origins=resolved.cors_origin_list,
         allow_credentials=False,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
+    application.add_middleware(CsrfHeaderMiddleware)
 
+    # Guarded here rather than route by route, so a route added to one of these routers
+    # is protected without anyone having to remember. health and auth hold the public
+    # routes and guard the rest themselves; tests/api/test_route_guards.py checks that
+    # nothing else is reachable without a session.
+    signed_in = [Depends(active_user)]
+    admins = [Depends(admin_user)]
     application.include_router(health.router, prefix="/api")
-    application.include_router(search.router, prefix="/api")
-    application.include_router(indexing.router, prefix="/api")
-    application.include_router(documents.router, prefix="/api")
-    application.include_router(folders.router, prefix="/api")
-    application.include_router(admin.router, prefix="/api")
+    application.include_router(auth.router, prefix="/api")
+    application.include_router(search.router, prefix="/api", dependencies=signed_in)
+    application.include_router(indexing.router, prefix="/api", dependencies=signed_in)
+    application.include_router(documents.router, prefix="/api", dependencies=signed_in)
+    application.include_router(folders.router, prefix="/api", dependencies=admins)
+    application.include_router(admin.router, prefix="/api", dependencies=admins)
+    application.include_router(users.router, prefix="/api", dependencies=admins)
 
     # Last, so every /api route and /docs is matched before the catch-all mount.
     if FRONTEND_DIST.is_dir():

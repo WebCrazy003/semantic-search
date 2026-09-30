@@ -10,6 +10,7 @@ import {
   getIndexStatus,
   getJobs,
   removeDocument,
+  setVisibilityInBulk,
   startIndexing,
   uploadDocuments,
   type ClearResult,
@@ -17,6 +18,7 @@ import {
   type IndexStatus,
   type JobSummary,
   type UploadResult,
+  type Visibility,
 } from '../services/api'
 
 // Fast while a job runs, slow otherwise: the slow beat is what notices a job that
@@ -40,6 +42,8 @@ export interface Library {
   importFiles: (files: File[]) => Promise<void>
   remove: (documentId: string) => Promise<void>
   clearAll: () => Promise<void>
+  /** Admins only: make documents public or private. */
+  setVisibility: (documentIds: string[], visibility: Visibility) => Promise<void>
   dismissError: () => void
 }
 
@@ -120,7 +124,9 @@ export function useLibrary(): Library {
         if (result.saved.length > 0) {
           const started = await startIndexing({ trigger: 'upload' })
           if (started.status === 'already_running') {
-            setError('Files were imported, but a job is already running. Index again when it ends.')
+            setError(
+              'Your files are saved. Another indexing run is in progress; press Index when it ends.',
+            )
           }
         }
         await refresh()
@@ -161,6 +167,22 @@ export function useLibrary(): Library {
     }
   }, [refresh])
 
+  const setVisibility = useCallback(
+    async (documentIds: string[], visibility: Visibility) => {
+      if (documentIds.length === 0) return
+      setBusy(true)
+      try {
+        await setVisibilityInBulk(documentIds, visibility)
+        await refresh()
+      } catch (caught) {
+        setError(message(caught, 'Could not change who can see the documents'))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [refresh],
+  )
+
   const dismissError = useCallback(() => setError(null), [])
 
   return {
@@ -177,6 +199,7 @@ export function useLibrary(): Library {
     importFiles,
     remove,
     clearAll,
+    setVisibility,
     dismissError,
   }
 }

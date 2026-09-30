@@ -1,6 +1,6 @@
 // frontend/src/pages/AdminPage.tsx
-import { ArrowLeftOutlined } from '@ant-design/icons'
-import { Button, Tabs, Typography } from 'antd'
+import { ArrowLeftOutlined, TeamOutlined } from '@ant-design/icons'
+import { Button, Space, Tabs, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useLibraryContext } from '../app/LibraryContext'
@@ -42,9 +42,17 @@ export function AdminPage() {
             Read-only. Nothing on this page changes the index.
           </Typography.Text>
         </div>
-        <Button icon={<ArrowLeftOutlined aria-hidden="true" />} onClick={() => navigate('/settings')}>
-          Back to settings
-        </Button>
+        <Space wrap>
+          <Button icon={<TeamOutlined aria-hidden="true" />} onClick={() => navigate('/admin/users')}>
+            Users
+          </Button>
+          <Button
+            icon={<ArrowLeftOutlined aria-hidden="true" />}
+            onClick={() => navigate('/settings')}
+          >
+            Back to settings
+          </Button>
+        </Space>
       </div>
 
       <Tabs

@@ -14,15 +14,19 @@ Getting started
 
 2. Your browser opens at http://127.0.0.1:8000/
 
-3. Put PDF or Word (.docx) files into the documents folder next to this file,
-   or use the Documents
-   tab to add any folder on this computer. Folders you add are read where they
-   are; nothing is copied or moved.
+3. The first time, create the administrator account. This only works on this
+   computer, not from another one on the network.
 
-4. Press "Index documents". Indexing reads every page and is slow the first
+4. On the Documents tab, press "Add documents" and import PDF or Word (.docx)
+   files. Each person's files are private to them; an administrator can make
+   any document public so everyone can find it. Files put into the documents
+   folder next to this file by hand are indexed too, visible to
+   administrators until they make them public.
+
+5. Press "Index documents". Indexing reads every page and is slow the first
    time. It picks up where it left off if you stop it.
 
-5. Search from the Search tab. Chinese and Korean queries both work, and a
+6. Search from the Search tab. Chinese and Korean queries both work, and a
    query in one language finds passages in the other.
 
 Double-click stop.bat when you are finished, or just close the window titled
@@ -79,3 +83,24 @@ runtime\          Python and the libraries; do not change anything in here
 .env              settings, plain text, safe to edit with Notepad
 
 You can move or rename this whole folder; nothing points outside it.
+
+
+Accounts
+--------
+
+Everyone logs in with a username and password. There is no email.
+
+Forgot your password?
+    Choose "Forgot your password?" on the login page and give your
+    username. An administrator approves it on the Users page, and then the
+    same page lets you choose a new one. An administrator can also reset a
+    password directly.
+
+No administrator can log in
+    DocSage can keep running. Open a command prompt in this folder and run:
+        runtime\python\python.exe scripts\reset_admin.py <username>
+    It prints a temporary password to log in with.
+
+Back up data\access.db
+    It holds the accounts and which documents are public. Unlike the rest
+    of the data folder, nothing can rebuild it.

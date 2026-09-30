@@ -19,6 +19,29 @@ downloaded.
 - **Storage** is a single Qdrant collection, `pdf_passages`, one point per passage.
 - **A SQLite manifest** at `data/manifest.db` holds per-document bookkeeping. It is a
   derived cache; `scripts/rebuild_manifest.py` regenerates it from Qdrant.
+- **Accounts** live in `data/access.db`: users, sessions, password reset requests and
+  which documents are public. Nothing can rebuild it, so back it up.
+
+## Accounts and ownership
+
+Everyone logs in. The first start asks for an administrator account, which can only be
+created from the machine DocSage runs on. After that, people sign up with a username and
+password (an admin can turn sign-up off) and see only their own documents plus the
+ones an administrator has made public. Admins see everything.
+
+- **Ownership comes from where a file lives.** Uploads go to
+  `documents/users/<user_id>/`; everything else in `documents/` and in registered
+  folders is the *library*, visible to admins until they publish it. Clearing the index
+  or rebuilding the manifest therefore never changes who owns what.
+- **Forgotten passwords** are reset by username with an admin's approval, or by an admin
+  directly. There is no email.
+- **Locked out?** `uv run --directory backend python ../scripts/reset_admin.py <username>`
+  prints a temporary password and makes that account an active admin.
+- **Upgrading** an install from before accounts: everything already indexed becomes
+  library, private to admins, with no re-embedding. Publish it from the Documents page.
+
+See [the spec](docs/superpowers/specs/2026-09-29-accounts-and-document-ownership.md) for
+the design.
 
 ## Setup
 
@@ -41,8 +64,9 @@ Three processes:
     uv run --directory backend uvicorn app.main:app --host 127.0.0.1 --port 8000
     npm --prefix frontend run dev
 
-Then open http://127.0.0.1:5173. Put PDF or Word files in `documents/` and press
-**Index documents** on the Documents tab.
+Then open http://127.0.0.1:5173, create the administrator account, and import PDF or
+Word files on the Documents tab. Files put in `documents/` by hand are indexed as the
+library when an admin presses **Index documents**.
 
 ## Windows: building an offline release
 
@@ -146,14 +170,20 @@ display it. Legacy `.doc` is not supported; save it as `.docx` in Word. Set
 
 ## API
 
+Every route but `/api/health` and the account routes needs a session cookie, and every
+request that changes something needs the header `X-DocSage: 1`.
+
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | Liveness |
+| GET | `/api/health` | Liveness (no login) |
 | GET | `/api/health/ready` | Qdrant, collection, model, point count |
-| POST | `/api/search` | Semantic search |
-| POST | `/api/index` | Start an indexing run |
+| GET/POST | `/api/auth/...` | Status, setup, register, login, logout, password, reset requests |
+| POST | `/api/search` | Semantic search over what the caller may read |
+| POST | `/api/index` | Start an indexing run (a user's covers only their uploads) |
 | GET | `/api/index/status` | Progress and failures of the current or last run |
-| GET | `/api/documents` | Indexed documents with page and passage counts |
+| GET | `/api/documents` | Documents the caller may read, with page and passage counts |
+| PUT | `/api/documents/{id}/visibility` | Admin: make a document public or private |
+| * | `/api/admin/...` | Admin: users, reset requests, bulk visibility, sign-up, inspectors |
 
 Interactive docs are at http://127.0.0.1:8000/docs.
 
@@ -208,11 +238,10 @@ development setup only the Vite dev server listens on the network; the backend a
 Qdrant stay on `127.0.0.1`, and API calls from the other device are proxied through
 Vite. On Windows the single process binds `0.0.0.0` directly.
 
-**There is no authentication.** Anyone who can reach that address can search every
-indexed document, read the passages, open the PDFs, remove documents and clear the
-index. Use this on a network you trust, and go back to `npm --prefix frontend run dev`
-when you are finished. macOS and Windows may each ask once whether to allow
-incoming connections; that prompt is this server.
+Everyone on the network has to log in, and sees only their own documents and public
+ones. The connection is plain HTTP, though, so passwords and documents cross the
+network unencrypted: use this on a network you trust. macOS and Windows may each ask
+once whether to allow incoming connections; that prompt is this server.
 
 ## Offline guarantees
 
@@ -231,7 +260,7 @@ incoming connections; that prompt is this server.
 ## Out of scope for this version
 
 OCR for scanned PDFs, legacy `.doc`, `.odt` and `.rtf`, keyword and hybrid search,
-reranking, LLM answers, folder watching, PDF preview, user accounts, GPUs other than
+reranking, LLM answers, folder watching, PDF preview, email password reset, HTTPS, GPUs other than
 NVIDIA RTX. Image-only PDFs and encrypted files are reported as `unsupported` rather
 than failing the run.
 
@@ -245,6 +274,8 @@ than failing the run.
 | A PDF is `unsupported` | It is image-only or encrypted; OCR is out of scope |
 | A Word file is `unsupported` | It is password-protected, or an old `.doc` renamed `.docx` |
 | Document counts look wrong | `scripts/rebuild_manifest.py` |
+| No admin can log in | `scripts/reset_admin.py <username>` on the machine itself |
+| A user cannot see a document | It is private to its owner; an admin can make it public |
 | Indexing is slow | The Indexing page says which device is used. On Windows with an RTX card, update the NVIDIA driver to 580+ |
 | Windows: "the NVIDIA GPU could not be used" | Driver older than 580, or a card older than RTX 20; it runs on the CPU meanwhile |
 | Windows: PyTorch will not import | Run `runtime\vc_redist.x64.exe` as administrator |

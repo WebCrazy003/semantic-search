@@ -797,3 +797,87 @@ body {
     display: none;
   }
 }
+
+/* ---------------------------------------------------------------- accounts */
+
+.auth-page {
+  display: flex;
+  justify-content: center;
+  padding-block: 32px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-card-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.auth-card-head h3.ant-typography {
+  margin: 12px 0 4px;
+}
+
+.auth-subtitle {
+  margin-bottom: 0;
+}
+
+.auth-alert {
+  margin-bottom: 16px;
+}
+
+.auth-footer {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.auth-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+}
+
+.auth-loading {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+}
+
+.account-button .account-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-who {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.temporary-password {
+  font-size: 18px;
+}
+
+.bulk-actions {
+  margin-bottom: 12px;
+}
+
+.documents-note,
+.settings-note {
+  margin-bottom: 12px;
+}
+
+.settings-admin-links {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 575px) {
+  /* The account button keeps its icon; the name would crowd out the nav. */
+  .account-button .account-name {
+    display: none;
+  }
+}

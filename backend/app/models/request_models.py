@@ -11,15 +11,24 @@ from pydantic import BaseModel, Field
 class SearchFilters(BaseModel):
     language: str | None = None
     document_id: str | None = None
+    # Admin-only narrowing. Ignored for everyone else, not rejected, so an older client
+    # that happens to send them keeps working.
+    owner_id: str | None = None
+    visibility: Literal["public", "private"] | None = None
 
     def is_empty(self) -> bool:
-        return self.language is None and self.document_id is None
+        return all(
+            value is None
+            for value in (self.language, self.document_id, self.owner_id, self.visibility)
+        )
 
 
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=None, ge=1)
     filters: SearchFilters | None = None
+    # For a non-admin: their own documents and public ones (all), or just one of the two.
+    scope: Literal["all", "mine", "public"] = "all"
 
 
 class IndexRequest(BaseModel):
@@ -30,7 +39,66 @@ class IndexRequest(BaseModel):
     trigger: Literal["scan", "upload"] = Field(
         default="scan", description="Labels the run in the job history"
     )
+    scope: str | None = Field(
+        default=None,
+        description="Admin only: a user id, to re-index just that user's uploads",
+    )
 
 
 class AddFolderRequest(BaseModel):
     path: str = Field(min_length=1, description="Absolute path of a folder to index in place")
+
+
+# ------------------------------------------------------------------ accounts
+
+
+class Credentials(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class ResetRequestCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+
+
+class ResetRequestToken(BaseModel):
+    request_token: str = Field(min_length=1, max_length=256)
+
+
+class ResetRequestComplete(BaseModel):
+    request_token: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
+class CreateUserRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    role: Literal["user", "admin"] = "user"
+
+
+class UpdateUserRequest(BaseModel):
+    role: Literal["user", "admin"] | None = None
+    disabled: bool | None = None
+
+
+class AdminResetPasswordRequest(BaseModel):
+    # Empty means "generate one for me".
+    new_password: str | None = Field(default=None, max_length=256)
+    must_change: bool = True
+
+
+class VisibilityRequest(BaseModel):
+    visibility: Literal["public", "private"]
+
+
+class BulkVisibilityRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1, max_length=500)
+    visibility: Literal["public", "private"]
+
+
+class AuthSettingsRequest(BaseModel):
+    registration_open: bool

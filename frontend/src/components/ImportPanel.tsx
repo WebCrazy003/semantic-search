@@ -49,8 +49,9 @@ export function ImportPanel({ busy, running, lastUpload, onImport }: Props) {
         </p>
         <p className="ant-upload-text">Drop PDF or Word files here, or click to choose</p>
         <p className="ant-upload-hint">
-          Importing <strong>copies</strong> the files into the documents folder and then indexes
-          them, so everything searchable lives in one place. PDF and Word (.docx) files.
+          Importing <strong>copies</strong> the files into your own folder and then indexes them.
+          They are private to you until an administrator makes them public. PDF and Word (.docx)
+          files.
         </p>
       </Upload.Dragger>
 

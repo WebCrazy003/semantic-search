@@ -1,12 +1,19 @@
 // frontend/src/__tests__/helpers.tsx
-// Rendering helpers. The app's state now lives in providers above the router, so a test
-// that renders a page in isolation has to supply the same tree main.tsx does.
+// Rendering helpers. The app's state lives in providers, so a test that renders a page in
+// isolation has to supply the same tree main.tsx and App's signed-in layout do.
+//
+// Every test starts logged in as an administrator (vitest.setup.ts mocks the session);
+// `asUser()` and `loggedOut()` change that for one test.
 
 import { render } from '@testing-library/react'
 import type { ReactElement, ReactNode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
+import { vi } from 'vitest'
 import App from '../App'
+import { AuthProvider } from '../app/AuthContext'
 import { LibraryProvider } from '../app/LibraryContext'
+import * as api from '../services/api'
+import type { User } from '../services/api'
 import { SearchProvider } from '../app/SearchContext'
 import { SettingsProvider } from '../settings/SettingsContext'
 import { ThemeProvider } from '../settings/ThemeProvider'
@@ -17,35 +24,67 @@ export function givenSettings(settings: Partial<UiSettings>): void {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 }
 
-function Providers({ children }: { children: ReactNode }) {
+export const ADMIN: User = {
+  user_id: 'admin-id',
+  username: 'boss',
+  role: 'admin',
+  must_change_password: false,
+}
+
+export const USER: User = {
+  user_id: 'kim-id',
+  username: 'kim',
+  role: 'user',
+  must_change_password: false,
+}
+
+/** The session every test starts with. Called from vitest.setup.ts. */
+export function givenSession(user: User | null, extra: Partial<api.AuthStatus> = {}) {
+  vi.spyOn(api, 'getAuthStatus').mockResolvedValue({
+    setup_required: false,
+    registration_open: true,
+    user,
+    ...extra,
+  })
+  vi.spyOn(api, 'getMe').mockResolvedValue(
+    user ? { user, pending_reset_requests: user.role === 'admin' ? 0 : null } : ({} as api.Me),
+  )
+}
+
+export const asUser = (user: User = USER) => givenSession(user)
+export const loggedOut = (extra: Partial<api.AuthStatus> = {}) => givenSession(null, extra)
+
+function Shell({ children }: { children: ReactNode }) {
   return (
     <SettingsProvider>
       <ThemeProvider>
-        <LibraryProvider>
-          <SearchProvider>{children}</SearchProvider>
-        </LibraryProvider>
+        <AuthProvider>{children}</AuthProvider>
       </ThemeProvider>
     </SettingsProvider>
   )
 }
 
-/** One page, at one route, with the real providers around it. */
+/** One page, at one route, with the real providers around it, as App mounts them. */
 export function renderWithProviders(ui: ReactElement, route = '/') {
   return render(
-    <Providers>
-      <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-    </Providers>,
+    <Shell>
+      <LibraryProvider>
+        <SearchProvider>
+          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        </SearchProvider>
+      </LibraryProvider>
+    </Shell>,
   )
 }
 
 /** The whole app, starting at `route`. */
 export function renderApp(route = '/') {
   return render(
-    <Providers>
+    <Shell>
       <MemoryRouter initialEntries={[route]}>
         <App />
       </MemoryRouter>
-    </Providers>,
+    </Shell>,
   )
 }
 

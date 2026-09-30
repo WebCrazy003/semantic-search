@@ -3,8 +3,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter } from 'react-router-dom'
 import App from './App'
-import { LibraryProvider } from './app/LibraryContext'
-import { SearchProvider } from './app/SearchContext'
+import { AuthProvider } from './app/AuthContext'
 import { SettingsProvider } from './settings/SettingsContext'
 import { ThemeProvider } from './settings/ThemeProvider'
 
@@ -15,13 +14,13 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SettingsProvider>
       <ThemeProvider>
-        <LibraryProvider>
-          <SearchProvider>
-            <HashRouter>
-              <App />
-            </HashRouter>
-          </SearchProvider>
-        </LibraryProvider>
+        {/* The library poller and the search state mount inside App's signed-in
+            layout, so they exist only while someone is logged in. */}
+        <AuthProvider>
+          <HashRouter>
+            <App />
+          </HashRouter>
+        </AuthProvider>
       </ThemeProvider>
     </SettingsProvider>
   </StrictMode>,

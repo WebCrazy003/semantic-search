@@ -62,7 +62,9 @@ describe('the aggregate diagrams', () => {
   it('shows the headline numbers', async () => {
     renderWithProviders(<DocumentsPage />)
     await ready()
-    const library = screen.getByText('Library').closest('.ant-card') as HTMLElement
+    // The card titled Library; an admin's owner column also says Library.
+    const title = screen.getAllByText('Library').find((node) => node.closest('.ant-card-head'))
+    const library = title?.closest('.ant-card') as HTMLElement
     expect(within(library).getByText('Searchable')).toBeInTheDocument()
     // 430 + 120 passages from the two indexed documents.
     // CountUp animates towards the real figure, so this waits for it to arrive.

@@ -14,7 +14,14 @@ export interface SearchHit {
   language?: string | null
   file_type?: FileType
   text: string
+  visibility?: Visibility
+  is_mine?: boolean
+  /** Admins only. */
+  owner_id?: string | null
+  owner_username?: string | null
 }
+
+export type Visibility = 'public' | 'private'
 
 /** 'docx' pages are Word's last layout, so they are shown as approximate. */
 export type FileType = 'pdf' | 'docx'
@@ -50,6 +57,8 @@ export interface IndexStatus {
   status: 'idle' | 'running' | 'completed' | 'failed'
   job_id: string | null
   trigger: string
+  /** 'library', or the user id whose uploads are being indexed. */
+  scope?: string
   directory: string | null
   current_file: string | null
   current_stage: string | null
@@ -92,6 +101,12 @@ export interface DocumentSummary {
   indexed_at?: string | null
   file_type?: FileType
   pages_approximate?: boolean
+  visibility?: Visibility
+  is_mine?: boolean
+  /** Admins only: a user id or 'library'. */
+  owner_id?: string | null
+  /** Admins only: null for the library. */
+  owner_username?: string | null
 }
 
 export interface JobSummary {
@@ -110,6 +125,8 @@ export interface JobSummary {
   deleted: number
   chunks: number
   failures: { filename: string; error_type: string; error_message: string }[]
+  scope?: string
+  started_by_username?: string | null
 }
 
 export interface FolderSummary {
@@ -165,23 +182,71 @@ export interface Readiness {
   embedding_fallback_reason?: string | null
 }
 
+export type SearchScope = 'all' | 'mine' | 'public'
+
 export interface SearchParams {
   query: string
   topK: number
   language?: string
   documentId?: string
+  /** For regular users: their own documents, public ones, or both. */
+  scope?: SearchScope
+  /** Admins only. A user id, or 'library'. */
+  ownerId?: string
+  /** Admins only. */
+  visibility?: Visibility
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
+// ------------------------------------------------------------------ transport
+
+const OFFLINE = 'Cannot reach the backend. Is it running on 127.0.0.1:8000?'
+export const PASSWORD_CHANGE_REQUIRED = 'password_change_required'
+
+type AuthListener = (event: 'unauthorized' | 'password_change_required') => void
+let authListener: AuthListener | null = null
+
+/** AuthContext registers here to hear that the session ended or a password must change. */
+export function onAuthEvent(listener: AuthListener | null): void {
+  authListener = listener
+}
+
+/**
+ * Every request goes through here. It sends the session cookie, and on anything but a
+ * read the X-DocSage header the backend requires: a form on another site cannot set a
+ * custom header, which is what makes the cookie safe to send.
+ */
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const headers = new Headers(init.headers)
+  if (method !== 'GET' && method !== 'HEAD') headers.set('X-DocSage', '1')
   let response: Response
   try {
-    response = await fetch(path, init)
+    response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
   } catch {
     // The offline story means a failed fetch almost always means the backend is down.
-    throw new Error('Cannot reach the backend. Is it running on 127.0.0.1:8000?')
+    throw new Error(OFFLINE)
   }
+  // Only for routes that need a session: a failed login is a 401 too, and must not
+  // look like "you were logged out".
+  if (!path.startsWith('/api/auth/')) {
+    if (response.status === 401) authListener?.('unauthorized')
+    if (response.status === 403) {
+      const detail = await response
+        .clone()
+        .json()
+        .then((body: { detail?: unknown }) => body?.detail)
+        .catch(() => null)
+      if (detail === PASSWORD_CHANGE_REQUIRED) authListener?.('password_change_required')
+    }
+  }
+  return response
+}
+
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await send(path, init)
+  if (response.status === 204) return undefined as T
 
   const body = await response.json().catch(() => null)
   if (!response.ok) {
@@ -202,6 +267,8 @@ export async function search(params: SearchParams): Promise<SearchResponse> {
   const filters: Record<string, string> = {}
   if (params.language) filters.language = params.language
   if (params.documentId) filters.document_id = params.documentId
+  if (params.ownerId) filters.owner_id = params.ownerId
+  if (params.visibility) filters.visibility = params.visibility
 
   return call<SearchResponse>('/api/search', {
     method: 'POST',
@@ -209,6 +276,7 @@ export async function search(params: SearchParams): Promise<SearchResponse> {
     body: JSON.stringify({
       query: params.query,
       top_k: params.topK,
+      ...(params.scope && params.scope !== 'all' ? { scope: params.scope } : {}),
       ...(Object.keys(filters).length > 0 ? { filters } : {}),
     }),
   })
@@ -218,12 +286,10 @@ export async function startIndexing(
   options: { directory?: string; force?: boolean; trigger?: 'scan' | 'upload' } = {},
 ): Promise<IndexStarted> {
   const { directory, force = false, trigger = 'scan' } = options
-  const response = await fetch('/api/index', {
+  const response = await send('/api/index', {
     method: 'POST',
     headers: JSON_HEADERS,
     body: JSON.stringify({ ...(directory ? { directory } : {}), force, trigger }),
-  }).catch(() => {
-    throw new Error('Cannot reach the backend. Is it running on 127.0.0.1:8000?')
   })
 
   const body = await response.json().catch(() => null)
@@ -413,4 +479,199 @@ export function getChunks(documentId: string, offset = 0, limit = 50): Promise<C
   return call<ChunkListResponse>(
     `/api/admin/documents/${documentId}/chunks?offset=${offset}&limit=${limit}`,
   )
+}
+
+// ------------------------------------------------------------------ accounts
+
+export type Role = 'user' | 'admin'
+
+export interface User {
+  user_id: string
+  username: string
+  role: Role
+  must_change_password: boolean
+}
+
+export interface AuthStatus {
+  setup_required: boolean
+  registration_open: boolean
+  user: User | null
+}
+
+export interface Me {
+  user: User
+  /** Admins only. */
+  pending_reset_requests?: number | null
+}
+
+export type ResetState = 'pending' | 'approved' | 'denied' | 'completed' | 'expired' | 'superseded'
+
+export interface ResetRequestCreated {
+  request_token: string
+  expires_at: string
+}
+
+function post<T>(path: string, body?: unknown): Promise<T> {
+  return call<T>(path, {
+    method: 'POST',
+    ...(body === undefined ? {} : { headers: JSON_HEADERS, body: JSON.stringify(body) }),
+  })
+}
+
+export function getAuthStatus(): Promise<AuthStatus> {
+  return call<AuthStatus>('/api/auth/status')
+}
+
+export function getMe(): Promise<Me> {
+  return call<Me>('/api/auth/me')
+}
+
+export function setupAdmin(username: string, password: string): Promise<Me> {
+  return post<Me>('/api/auth/setup', { username, password })
+}
+
+export function register(username: string, password: string): Promise<Me> {
+  return post<Me>('/api/auth/register', { username, password })
+}
+
+export function login(username: string, password: string): Promise<Me> {
+  return post<Me>('/api/auth/login', { username, password })
+}
+
+export function logout(): Promise<void> {
+  return post<void>('/api/auth/logout')
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return post<void>('/api/auth/password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}
+
+export function requestPasswordReset(username: string): Promise<ResetRequestCreated> {
+  return post<ResetRequestCreated>('/api/auth/reset-requests', { username })
+}
+
+export function getResetStatus(
+  requestToken: string,
+): Promise<{ status: ResetState; expires_at?: string | null }> {
+  return post('/api/auth/reset-requests/status', { request_token: requestToken })
+}
+
+export function completePasswordReset(requestToken: string, newPassword: string): Promise<Me> {
+  return post<Me>('/api/auth/reset-requests/complete', {
+    request_token: requestToken,
+    new_password: newPassword,
+  })
+}
+
+// ------------------------------------------------------------ administration
+
+export interface UserAdminView {
+  user_id: string
+  username: string
+  role: Role
+  disabled: boolean
+  must_change_password: boolean
+  created_at: string
+  last_login_at: string | null
+  documents: number
+  public_documents: number
+  passages: number
+}
+
+export interface ResetRequestView {
+  request_id: string
+  user_id: string
+  username: string
+  user_disabled: boolean
+  created_at: string
+  expires_at: string
+  client_ip: string | null
+}
+
+export function listUsers(): Promise<UserAdminView[]> {
+  return call<UserAdminView[]>('/api/admin/users')
+}
+
+export function createUser(
+  username: string,
+  role: Role,
+): Promise<{ user: UserAdminView; temporary_password: string }> {
+  return post('/api/admin/users', { username, role })
+}
+
+export function updateUser(
+  userId: string,
+  changes: { role?: Role; disabled?: boolean },
+): Promise<UserAdminView> {
+  return call<UserAdminView>(`/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(changes),
+  })
+}
+
+/** Leave `newPassword` empty to have one generated; it comes back once, here. */
+export function adminResetPassword(
+  userId: string,
+  newPassword: string | null,
+  mustChange: boolean,
+): Promise<{ temporary_password: string | null }> {
+  return post(`/api/admin/users/${userId}/reset-password`, {
+    ...(newPassword ? { new_password: newPassword } : {}),
+    must_change: mustChange,
+  })
+}
+
+export function deleteUser(userId: string): Promise<{
+  username: string
+  documents_removed: number
+  passages_removed: number
+  files_removed: number
+}> {
+  return call(`/api/admin/users/${userId}?documents=delete`, { method: 'DELETE' })
+}
+
+export function listResetRequests(): Promise<ResetRequestView[]> {
+  return call<ResetRequestView[]>('/api/admin/reset-requests')
+}
+
+export function approveResetRequest(requestId: string): Promise<void> {
+  return post<void>(`/api/admin/reset-requests/${requestId}/approve`)
+}
+
+export function denyResetRequest(requestId: string): Promise<void> {
+  return post<void>(`/api/admin/reset-requests/${requestId}/deny`)
+}
+
+export function setDocumentVisibility(
+  documentId: string,
+  visibility: Visibility,
+): Promise<{ document_id: string; visibility: Visibility }> {
+  return call(`/api/documents/${documentId}/visibility`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ visibility }),
+  })
+}
+
+export function setVisibilityInBulk(
+  documentIds: string[],
+  visibility: Visibility,
+): Promise<{ updated: number; not_found: string[] }> {
+  return post('/api/admin/documents/visibility', { document_ids: documentIds, visibility })
+}
+
+export function getAuthSettings(): Promise<{ registration_open: boolean }> {
+  return call('/api/admin/auth-settings')
+}
+
+export function setRegistrationOpen(open: boolean): Promise<{ registration_open: boolean }> {
+  return call('/api/admin/auth-settings', {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ registration_open: open }),
+  })
 }

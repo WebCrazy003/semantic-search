@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.auth import active_user, scope_for
 from app.deps import Container, get_container
 from app.models.response_models import HealthResponse, ReadinessResponse
+from app.services.access_store import User
 
 router = APIRouter(tags=["health"])
 
@@ -16,10 +18,16 @@ def health() -> HealthResponse:
 
 
 @router.get("/health/ready", response_model=ReadinessResponse)
-def ready(container: Container = Depends(get_container)) -> ReadinessResponse:
-    """Readiness: checks the things a search actually depends on."""
+def ready(
+    user: User = Depends(active_user),
+    container: Container = Depends(get_container),
+) -> ReadinessResponse:
+    """Readiness: checks the things a search actually depends on.
+
+    Needs a login. `points` counts only the passages the caller can search.
+    """
     try:
-        points = container.qdrant.count_points()
+        points = container.qdrant.count_points(scope_for(user))
         reachable = True
     except Exception:
         points, reachable = 0, False

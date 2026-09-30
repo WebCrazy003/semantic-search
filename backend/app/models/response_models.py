@@ -41,6 +41,11 @@ class SearchHit(BaseModel):
     language: str | None = None
     file_type: str = "pdf"  # "pdf" or "docx"
     text: str
+    visibility: str = "private"
+    is_mine: bool = False
+    # Only for admins. Everyone else sees "Public", never who uploaded it.
+    owner_id: str | None = None
+    owner_username: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -81,6 +86,8 @@ class IndexStatusResponse(BaseModel):
     status: Literal["idle", "running", "completed", "failed"]
     job_id: str | None = None
     trigger: str = "scan"
+    # library, or the user id whose uploads are being indexed
+    scope: str = "library"
     directory: str | None = None
     current_file: str | None = None
     current_stage: str | None = None
@@ -119,6 +126,11 @@ class DocumentSummary(BaseModel):
     file_type: str = "pdf"  # "pdf" or "docx"
     # A .docx has no fixed pages; its page numbers are Word's last layout, or 1.
     pages_approximate: bool = False
+    visibility: str = "private"
+    is_mine: bool = False
+    # Only for admins; None for everyone else. owner_username is None for the library.
+    owner_id: str | None = None
+    owner_username: str | None = None
 
 
 class JobSummary(BaseModel):
@@ -139,6 +151,8 @@ class JobSummary(BaseModel):
     deleted: int = 0
     chunks: int = 0
     failures: list[dict[str, str]] = []
+    scope: str = "library"
+    started_by_username: str | None = None
 
 
 class RejectedUpload(BaseModel):
@@ -310,3 +324,89 @@ class IndexSchemaResponse(BaseModel):
     manifest: ManifestSchema
     chunking: ChunkingSchema
     embedding: EmbeddingSchema
+
+
+# ------------------------------------------------------------------ accounts
+
+
+class UserView(BaseModel):
+    user_id: str
+    username: str
+    role: str
+    must_change_password: bool = False
+
+
+class MeResponse(BaseModel):
+    user: UserView
+    # Admins only: how many password reset requests are waiting for a decision.
+    pending_reset_requests: int | None = None
+
+
+class AuthStatusResponse(BaseModel):
+    setup_required: bool
+    registration_open: bool
+    user: UserView | None = None
+
+
+class ResetRequestCreated(BaseModel):
+    request_token: str
+    expires_at: datetime
+
+
+class ResetRequestStatus(BaseModel):
+    status: Literal["pending", "approved", "denied", "completed", "expired", "superseded"]
+    expires_at: datetime | None = None
+
+
+class UserAdminView(BaseModel):
+    user_id: str
+    username: str
+    role: str
+    disabled: bool
+    must_change_password: bool
+    created_at: datetime
+    last_login_at: datetime | None = None
+    documents: int = 0
+    public_documents: int = 0
+    passages: int = 0
+
+
+class CreatedUserResponse(BaseModel):
+    user: UserAdminView
+    temporary_password: str
+
+
+class AdminResetPasswordResponse(BaseModel):
+    # Only when the admin asked for one to be generated; a typed password is not echoed.
+    temporary_password: str | None = None
+
+
+class DeletedUserResponse(BaseModel):
+    username: str
+    documents_removed: int
+    passages_removed: int
+    files_removed: int
+
+
+class ResetRequestView(BaseModel):
+    request_id: str
+    user_id: str
+    username: str
+    user_disabled: bool
+    created_at: datetime
+    expires_at: datetime
+    client_ip: str | None = None
+
+
+class VisibilityResponse(BaseModel):
+    document_id: str
+    visibility: str
+
+
+class BulkVisibilityResponse(BaseModel):
+    updated: int
+    not_found: list[str]
+
+
+class AuthSettingsResponse(BaseModel):
+    registration_open: bool

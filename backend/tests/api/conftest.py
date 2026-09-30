@@ -1,9 +1,15 @@
 # backend/tests/api/conftest.py
-"""Builds the app with a container of fakes, so API tests need no model and no Docker."""
+"""Builds the app with a container of fakes, so API tests need no model and no Docker.
+
+`client` is logged in as an administrator, who can reach every route, so the tests that
+predate accounts keep testing what they always did. `anon` has no session, and
+`user_client("kim")` is a fresh regular user with their own session.
+"""
 
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -13,10 +19,12 @@ from qdrant_client import QdrantClient
 from app.config import Settings
 from app.deps import Container, build_extractors
 from app.main import create_app
+from app.services.access_store import AccessStore
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.device_usage import DeviceUsageMonitor
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
+from app.services.passwords import hash_password
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
 from tests.conftest import CharTokenCounter, FakeEmbeddingService
@@ -35,6 +43,7 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
         _env_file=None,
         pdf_directory=str(api_documents_dir),
         manifest_path=str(tmp_path / "manifest.db"),
+        access_db_path=str(tmp_path / "access.db"),
         default_top_k=10,
         max_top_k=100,
     )
@@ -46,6 +55,7 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
         vector_size=settings.vector_size,
     )
     manifest = ManifestService(settings.manifest_path)
+    access = AccessStore(settings.access_db_path)
     chunker = Chunker(tokenizer=tokenizer, config=ChunkConfig())
     extractors = build_extractors(settings)
     return Container(
@@ -63,6 +73,7 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
             qdrant=qdrant,
             manifest=manifest,
             default_directory=settings.pdf_directory,
+            access=access,
         ),
         search=SearchService(
             embedder=embedder,
@@ -70,11 +81,51 @@ def container(tmp_path: Path, api_documents_dir: Path) -> Container:
             default_top_k=settings.default_top_k,
             max_top_k=settings.max_top_k,
         ),
+        access=access,
         device_monitor=DeviceUsageMonitor(device="cpu", name="CPU"),
     )
 
 
+CSRF = {"X-DocSage": "1"}
+ADMIN_NAME = "boss"
+PASSWORD = "correct horse battery"
+
+
 @pytest.fixture
-def client(container: Container) -> TestClient:
-    with TestClient(create_app(container=container)) as test_client:
+def app(container: Container):  # noqa: ANN201
+    return create_app(container=container)
+
+
+@pytest.fixture
+def client(app, container: Container) -> Iterator[TestClient]:  # noqa: ANN001
+    """An administrator. Entering it runs the app's startup, which the others rely on."""
+    with TestClient(app, headers=CSRF) as test_client:
+        container.access.create_user(ADMIN_NAME, hash_password(PASSWORD), role="admin")
+        login(test_client, ADMIN_NAME)
         yield test_client
+
+
+@pytest.fixture
+def anon(app, client: TestClient) -> TestClient:  # noqa: ANN001
+    """No session. Depends on `client` only so the app has started."""
+    return TestClient(app, headers=CSRF)
+
+
+@pytest.fixture
+def user_client(app, client: TestClient, container: Container) -> Callable[..., TestClient]:  # noqa: ANN001
+    """Make a regular user (or another admin) and return a client logged in as them."""
+
+    def make(username: str, role: str = "user") -> TestClient:
+        container.access.create_user(username, hash_password(PASSWORD), role=role)
+        other = TestClient(app, headers=CSRF)
+        login(other, username)
+        return other
+
+    return make
+
+
+def login(test_client: TestClient, username: str, password: str = PASSWORD) -> None:
+    response = test_client.post(
+        "/api/auth/login", json={"username": username, "password": password}
+    )
+    assert response.status_code == 200, response.text

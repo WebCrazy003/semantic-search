@@ -1,5 +1,5 @@
 // frontend/src/settings/ThemeProvider.tsx
-import { ConfigProvider, theme as antdTheme } from 'antd'
+import { App as AntApp, ConfigProvider, theme as antdTheme } from 'antd'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useSettings } from './SettingsContext'
 
@@ -62,7 +62,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       }}
       wave={{ disabled: reducedMotion }}
     >
-      {children}
+      {/* antd's App gives message and modal the theme above, for App.useApp(). */}
+      <AntApp component={false}>{children}</AntApp>
     </ConfigProvider>
   )
 }

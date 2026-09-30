@@ -70,7 +70,7 @@ class TestIndexSchema:
             file_hash="h",
             modified_at=datetime.now(UTC),
         )
-        written = set(QdrantService._payload(chunk, meta))
+        written = set(QdrantService._payload(chunk, meta, "library", "private"))
         documented = {field.name for field in _PAYLOAD_FIELDS}
         assert written == documented
 

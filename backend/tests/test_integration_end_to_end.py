@@ -16,10 +16,12 @@ from app.config import get_settings
 from app.deps import Container, build_extractors, chunk_config_from
 from app.main import create_app
 from app.models.request_models import SearchFilters, SearchRequest
+from app.services.access_store import AccessStore
 from app.services.chunk_service import Chunker
 from app.services.embedding_service import BgeEmbeddingService
 from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
+from app.services.passwords import hash_password
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
 from app.services.tokenizer_service import BgeTokenizer
@@ -80,6 +82,7 @@ def build_container(settings, client_factory, model, corpus: Path, manifest_path
         upsert_batch=settings.qdrant_upsert_batch,
     )
     manifest = ManifestService(manifest_path)
+    access = AccessStore(manifest_path.with_name("access.db"))
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
     extractors = build_extractors(settings)
     return Container(
@@ -97,6 +100,7 @@ def build_container(settings, client_factory, model, corpus: Path, manifest_path
             qdrant=qdrant,
             manifest=manifest,
             default_directory=corpus,
+            access=access,
         ),
         search=SearchService(
             embedder=embedder,
@@ -104,6 +108,7 @@ def build_container(settings, client_factory, model, corpus: Path, manifest_path
             default_top_k=settings.default_top_k,
             max_top_k=settings.max_top_k,
         ),
+        access=access,
     )
 
 
@@ -228,7 +233,9 @@ class TestApiThroughTheRealStack:
         from fastapi.testclient import TestClient
 
         container, _, _ = indexed
-        with TestClient(create_app(container=container)) as client:
+        with TestClient(create_app(container=container), headers={"X-DocSage": "1"}) as client:
+            container.access.create_user("itest", hash_password("itest-password"), role="admin")
+            client.post("/api/auth/login", json={"username": "itest", "password": "itest-password"})
             assert client.get("/api/health").json() == {"status": "ok"}
             ready = client.get("/api/health/ready").json()
             assert ready["status"] == "ready"

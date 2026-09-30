@@ -9,6 +9,7 @@ from app.logging_config import get_logger
 from app.models.request_models import SearchRequest
 from app.models.response_models import SearchResponse
 from app.services.embedding_service import EmbeddingService
+from app.services.ownership import AccessScope
 from app.services.qdrant_service import QdrantService
 
 logger = get_logger("search")
@@ -27,7 +28,13 @@ class SearchService:
         self._default_top_k = default_top_k
         self._max_top_k = max_top_k
 
-    def search(self, request: SearchRequest) -> SearchResponse:
+    def search(
+        self, request: SearchRequest, scope: AccessScope | None = None
+    ) -> SearchResponse:
+        """Search what `scope` may read. None reads everything: scripts and admins.
+
+        The route builds the scope from the session, never from the request body.
+        """
         query = request.query.strip()
         if not query:
             raise ValueError("cannot search for an empty query")
@@ -35,7 +42,9 @@ class SearchService:
         top_k = min(request.top_k or self._default_top_k, self._max_top_k)
         started = time.perf_counter()
         vector = self._embedder.embed_query(query)
-        hits = self._qdrant.search(vector=vector, top_k=top_k, filters=request.filters)
+        hits = self._qdrant.search(
+            vector=vector, top_k=top_k, filters=request.filters, scope=scope
+        )
         took_ms = int((time.perf_counter() - started) * 1000)
 
         # The query text itself is not logged: search history stays local, as the

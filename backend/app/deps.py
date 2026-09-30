@@ -7,13 +7,14 @@ of fakes and exercise the real wiring.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fastapi import Request
 from qdrant_client import QdrantClient
 
 from app.config import Settings
 from app.logging_config import get_logger
+from app.services.access_store import AccessStore
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.device_usage import DeviceUsageMonitor
 from app.services.docx_service import DocxService
@@ -24,6 +25,7 @@ from app.services.manifest_service import ManifestService
 from app.services.pdf_service import PdfService
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
+from app.services.throttle import Throttles
 from app.services.tokenizer_service import BgeTokenizer, TokenCounter
 
 logger = get_logger("deps")
@@ -40,12 +42,15 @@ class Container:
     extractors: ExtractorRegistry
     indexing: IndexingService
     search: SearchService
+    access: AccessStore
     # Optional so a container of fakes needs no device; without it the status endpoint
     # simply reports no usage.
     device_monitor: DeviceUsageMonitor | None = None
+    throttles: Throttles = field(default_factory=lambda: Throttles(login_failures=5))
 
     def close(self) -> None:
         self.manifest.close()
+        self.access.close()
         self.qdrant.close()
 
 
@@ -114,6 +119,7 @@ def build_container(settings: Settings) -> Container:
         upsert_batch=settings.qdrant_upsert_batch,
     )
     manifest = ManifestService(settings.manifest_path)
+    access = AccessStore(settings.access_db_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
     extractors = build_extractors(settings)
     describe = getattr(embedder, "device_info", None)
@@ -133,6 +139,7 @@ def build_container(settings: Settings) -> Container:
             qdrant=qdrant,
             manifest=manifest,
             default_directory=settings.pdf_directory,
+            access=access,
         ),
         search=SearchService(
             embedder=embedder,
@@ -140,6 +147,8 @@ def build_container(settings: Settings) -> Container:
             default_top_k=settings.default_top_k,
             max_top_k=settings.max_top_k,
         ),
+        access=access,
+        throttles=Throttles(login_failures=settings.auth_login_max_failures),
         device_monitor=DeviceUsageMonitor(
             device=device.device if device else "cpu",
             name=device.name if device else None,

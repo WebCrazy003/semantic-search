@@ -3,6 +3,7 @@ import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Popconfirm, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../app/AuthContext'
 import { useLibraryContext } from '../app/LibraryContext'
 import { AddDocumentsCard } from '../components/AddDocumentsCard'
 import { DocumentList } from '../components/DocumentList'
@@ -13,10 +14,16 @@ export function DocumentsPage() {
   const navigate = useNavigate()
   const { reducedMotion } = useSettings()
   const library = useLibraryContext()
+  const { isAdmin } = useAuth()
   const [adding, setAdding] = useState(false)
+  const mine = library.documents.filter((document) => document.is_mine)
+  const shared = library.documents.filter((document) => !document.is_mine)
 
   const aggregates = useAggregates(library.documents)
   const running = library.status?.status === 'running'
+  const runningNote = running ? (
+    <Typography.Text type="secondary">A job is running; this list updates as it goes.</Typography.Text>
+  ) : null
 
   return (
     <div className="page documents-page">
@@ -80,50 +87,71 @@ export function DocumentsPage() {
 
       {adding ? <AddDocumentsCard library={library} onClose={() => setAdding(false)} /> : null}
 
-      <Card
-        title="Indexed documents"
-        className="documents-card"
-        extra={
-          running ? (
-            <Typography.Text type="secondary">
-              A job is running; this list updates as it goes.
-            </Typography.Text>
-          ) : null
-        }
-      >
-        <DocumentList
-          documents={library.documents}
-          busy={library.busy || running}
-          onRemove={(documentId) => void library.remove(documentId)}
-        />
-      </Card>
-
-      <Card title="Clear the index" className="danger-card">
-        <Typography.Paragraph type="secondary">
-          Removes every passage and every document record. Your files stay where they are and the
-          job history is kept, so you can index again from scratch.
-        </Typography.Paragraph>
-        <Popconfirm
-          title="Clear all indexing?"
-          description={`${library.documents.length} document${
-            library.documents.length === 1 ? '' : 's'
-          } will stop being searchable.`}
-          okText="Yes, clear it"
-          okButtonProps={{ danger: true }}
-          onConfirm={() => void library.clearAll()}
-          disabled={library.busy || running}
+      {isAdmin ? (
+        <Card
+          title="Indexed documents"
+          className="documents-card"
+          extra={runningNote}
         >
-          <Button danger disabled={library.busy || running}>
-            Clear all indexing
-          </Button>
-        </Popconfirm>
-        {library.lastClear ? (
-          <Typography.Paragraph type="secondary" className="clear-result">
-            Cleared {library.lastClear.documents_removed} documents and{' '}
-            {library.lastClear.passages_removed} passages. The files themselves were kept.
+          <Typography.Paragraph type="secondary" className="documents-note">
+            Every user&apos;s documents and the library. A public document can be found by every
+            user; a private one only by its owner and administrators.
           </Typography.Paragraph>
-        ) : null}
-      </Card>
+          <DocumentList
+            documents={library.documents}
+            busy={library.busy || running}
+            onRemove={(documentId) => void library.remove(documentId)}
+            admin
+            onVisibility={(ids, visibility) => void library.setVisibility(ids, visibility)}
+          />
+        </Card>
+      ) : (
+        <>
+          <Card title="My documents" className="documents-card" extra={runningNote}>
+            <DocumentList
+              documents={mine}
+              busy={library.busy || running}
+              onRemove={(documentId) => void library.remove(documentId)}
+              empty="You have not added any documents yet. Use Add documents above."
+            />
+          </Card>
+          <Card title="Public documents" className="documents-card">
+            <Typography.Paragraph type="secondary" className="documents-note">
+              Documents an administrator has shared with everyone. You can open and search them.
+            </Typography.Paragraph>
+            <DocumentList documents={shared} empty="Nothing has been made public yet." />
+          </Card>
+        </>
+      )}
+
+      {isAdmin ? (
+        <Card title="Clear the index" className="danger-card">
+          <Typography.Paragraph type="secondary">
+            Removes every passage and every document record, for every user. Files, job history and
+            which documents are public are all kept, so indexing again brings everything back.
+          </Typography.Paragraph>
+          <Popconfirm
+            title="Clear all indexing?"
+            description={`${library.documents.length} document${
+              library.documents.length === 1 ? '' : 's'
+            } will stop being searchable.`}
+            okText="Yes, clear it"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => void library.clearAll()}
+            disabled={library.busy || running}
+          >
+            <Button danger disabled={library.busy || running}>
+              Clear all indexing
+            </Button>
+          </Popconfirm>
+          {library.lastClear ? (
+            <Typography.Paragraph type="secondary" className="clear-result">
+              Cleared {library.lastClear.documents_removed} documents and{' '}
+              {library.lastClear.passages_removed} passages. The files themselves were kept.
+            </Typography.Paragraph>
+          ) : null}
+        </Card>
+      ) : null}
     </div>
   )
 }

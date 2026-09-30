@@ -8,6 +8,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 
+def _uploads(container) -> Path:  # noqa: ANN001
+    """Where the logged-in admin's uploads go: their own folder under users/."""
+    from tests.api.conftest import ADMIN_NAME
+
+    admin = container.access.find_user(ADMIN_NAME)
+    return container.settings.pdf_directory / "users" / admin.user_id
+
+
 def _index(client: TestClient) -> dict:
     client.post("/api/index", json={})
     return client.get("/api/index/status").json()
@@ -26,7 +34,7 @@ class TestUpload:
         body = response.json()
         assert body["saved"] == ["new_manual.pdf"]
         assert body["rejected"] == []
-        assert (container.settings.pdf_directory / "new_manual.pdf").exists()
+        assert (_uploads(container) / "new_manual.pdf").exists()
 
     def test_several_files_arrive_in_one_request(
         self, client: TestClient, corpus_dir: Path
@@ -58,7 +66,7 @@ class TestUpload:
             files=[("files", ("manual.docx", payload, "application/octet-stream"))],
         )
         assert response.json()["saved"] == ["manual.docx"]
-        assert (container.settings.pdf_directory / "manual.docx").exists()
+        assert (_uploads(container) / "manual.docx").exists()
 
     def test_a_docx_extension_without_word_content_is_rejected(
         self, client: TestClient
@@ -129,7 +137,7 @@ class TestUpload:
             "/api/documents/upload",
             files=[("files", ("../../escaped.pdf", payload, "application/pdf"))],
         )
-        assert (container.settings.pdf_directory / "escaped.pdf").exists()
+        assert (_uploads(container) / "escaped.pdf").exists()
         assert not (container.settings.pdf_directory.parent.parent / "escaped.pdf").exists()
 
     def test_a_second_upload_of_the_same_name_does_not_overwrite(

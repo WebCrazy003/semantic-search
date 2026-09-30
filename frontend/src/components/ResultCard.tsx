@@ -60,6 +60,8 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
             </Typography.Text>
             <Tag className="result-page">{pageLabel(hit)}</Tag>
             {hit.language ? <Tag>{hit.language}</Tag> : null}
+            {hit.visibility === 'public' ? <Tag color="blue">Public</Tag> : null}
+            {hit.owner_username ? <Tag>{hit.owner_username}</Tag> : null}
           </div>
 
           {hit.heading ? (

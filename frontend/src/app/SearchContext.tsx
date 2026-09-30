@@ -4,7 +4,13 @@
 // routes cannot, so the state moves up instead.
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
-import { search, type SearchHit, type SearchResponse } from '../services/api'
+import {
+  search,
+  type SearchHit,
+  type SearchResponse,
+  type SearchScope,
+  type Visibility,
+} from '../services/api'
 import { useSettings } from '../settings/SettingsContext'
 
 interface SearchContextValue {
@@ -17,6 +23,15 @@ interface SearchContextValue {
   setTopK: (topK: number) => void
   language: string
   setLanguage: (language: string) => void
+  /** Regular users: their own documents, public ones, or both. */
+  scope: SearchScope
+  setScope: (scope: SearchScope) => void
+  /** Admins: '' for everyone, 'library', or a user id. */
+  owner: string
+  setOwner: (owner: string) => void
+  /** Admins: '' for either. */
+  visibility: Visibility | ''
+  setVisibility: (visibility: Visibility | '') => void
   busy: boolean
   error: string | null
   run: (query: string) => Promise<void>
@@ -40,6 +55,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // search page must not be undone by a later settings read.
   const [topK, setTopK] = useState(settings.resultsPerSearch)
   const [language, setLanguage] = useState(settings.defaultLanguage)
+  const [scope, setScope] = useState<SearchScope>('all')
+  const [owner, setOwner] = useState('')
+  const [visibility, setVisibility] = useState<Visibility | ''>('')
 
   const run = useCallback(
     async (nextQuery: string) => {
@@ -50,6 +68,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
           query: nextQuery,
           topK,
           ...(language ? { language } : {}),
+          ...(scope !== 'all' ? { scope } : {}),
+          // The backend ignores these for anyone but an admin.
+          ...(owner ? { ownerId: owner } : {}),
+          ...(visibility ? { visibility } : {}),
         })
         setResponse(result)
         // A populated list beside an empty panel reads as broken, so the top hit is
@@ -64,7 +86,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         setBusy(false)
       }
     },
-    [topK, language],
+    [topK, language, scope, owner, visibility],
   )
 
   const value = useMemo<SearchContextValue>(
@@ -78,11 +100,17 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       setTopK,
       language,
       setLanguage,
+      scope,
+      setScope,
+      owner,
+      setOwner,
+      visibility,
+      setVisibility,
       busy,
       error,
       run,
     }),
-    [query, response, selected, topK, language, busy, error, run],
+    [query, response, selected, topK, language, scope, owner, visibility, busy, error, run],
   )
 
   return <SearchContext.Provider value={value}>{children}</SearchContext.Provider>

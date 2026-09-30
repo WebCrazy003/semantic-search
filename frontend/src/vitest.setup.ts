@@ -34,8 +34,11 @@ if (!Element.prototype.scrollIntoView) {
 }
 
 // Settings persist to localStorage, so one test's choices must not reach the next.
-beforeEach(() => {
+// Every test starts logged in as an administrator; see __tests__/helpers.tsx.
+beforeEach(async () => {
   window.localStorage.clear()
+  const { ADMIN, givenSession } = await import('./__tests__/helpers')
+  givenSession(ADMIN)
 })
 
 afterEach(() => {

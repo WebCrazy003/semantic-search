@@ -1,12 +1,14 @@
 // frontend/src/pages/SearchPage.tsx
 import { PlusOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, Drawer, Empty, Grid, Row, Select, Skeleton, Space, Typography } from 'antd'
-import { useRef, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../app/AuthContext'
 import { keyOf, useSearchContext } from '../app/SearchContext'
 import { ResultCard } from '../components/ResultCard'
 import { ResultDetail } from '../components/ResultDetail'
 import { SearchBar } from '../components/SearchBar'
+import { listUsers } from '../services/api'
 import { LANGUAGES, TOP_K_CHOICES } from '../settings/settings'
 import { useSettings } from '../settings/SettingsContext'
 
@@ -17,7 +19,25 @@ export function SearchPage() {
   const listRef = useRef<HTMLDivElement>(null)
   const {
     query, response, selected, select, topK, setTopK, language, setLanguage, busy, error, run,
+    scope, setScope, owner, setOwner, visibility, setVisibility,
   } = useSearchContext()
+  const { isAdmin } = useAuth()
+  const [owners, setOwners] = useState<{ value: string; label: string }[]>([])
+
+  // An admin can narrow to one owner, so the select needs everyone's name.
+  useEffect(() => {
+    if (!isAdmin) return
+    let cancelled = false
+    listUsers()
+      .then((users) => {
+        if (cancelled) return
+        setOwners(users.map((user) => ({ value: user.user_id, label: user.username })))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin])
 
   // Side by side once there is room for both; a drawer below that, or whenever the
   // setting asks for one.
@@ -130,6 +150,50 @@ export function SearchPage() {
             popupMatchSelectWidth={false}
             options={LANGUAGES}
           />
+          {isAdmin ? (
+            <>
+              <Select
+                size="small"
+                variant="filled"
+                aria-label="Owner"
+                value={owner}
+                onChange={setOwner}
+                popupMatchSelectWidth={false}
+                options={[
+                  { value: '', label: 'Everyone' },
+                  { value: 'library', label: 'Library' },
+                  ...owners,
+                ]}
+              />
+              <Select
+                size="small"
+                variant="filled"
+                aria-label="Visibility"
+                value={visibility}
+                onChange={setVisibility}
+                popupMatchSelectWidth={false}
+                options={[
+                  { value: '', label: 'Public and private' },
+                  { value: 'public', label: 'Public only' },
+                  { value: 'private', label: 'Private only' },
+                ]}
+              />
+            </>
+          ) : (
+            <Select
+              size="small"
+              variant="filled"
+              aria-label="Show"
+              value={scope}
+              onChange={setScope}
+              popupMatchSelectWidth={false}
+              options={[
+                { value: 'all', label: 'Mine and public' },
+                { value: 'mine', label: 'Only mine' },
+                { value: 'public', label: 'Only public' },
+              ]}
+            />
+          )}
         </Space>
       </div>
 

@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS documents (
     error_type    TEXT,
     error_message TEXT,
     indexed_at    TEXT NOT NULL,
-    alt_filepaths TEXT NOT NULL DEFAULT '[]'
+    alt_filepaths TEXT NOT NULL DEFAULT '[]',
+    owner_id      TEXT NOT NULL DEFAULT 'library',
+    visibility    TEXT NOT NULL DEFAULT 'private'
 );
 CREATE INDEX IF NOT EXISTS idx_documents_filename ON documents(filename);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
@@ -55,7 +57,9 @@ CREATE TABLE IF NOT EXISTS index_jobs (
     failed        INTEGER NOT NULL DEFAULT 0,
     deleted       INTEGER NOT NULL DEFAULT 0,
     chunks        INTEGER NOT NULL DEFAULT 0,
-    failures      TEXT NOT NULL DEFAULT '[]'
+    failures      TEXT NOT NULL DEFAULT '[]',
+    started_by    TEXT,
+    scope         TEXT NOT NULL DEFAULT 'library'
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_started ON index_jobs(started_at DESC);
 
@@ -63,6 +67,24 @@ CREATE TABLE IF NOT EXISTS library_folders (
     path     TEXT PRIMARY KEY,
     added_at TEXT NOT NULL
 );
+"""
+
+# Columns added after the first release. initialise() adds whichever an older manifest
+# lacks, and only then creates the indexes that need them.
+_ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "documents": [
+        ("owner_id", "TEXT NOT NULL DEFAULT 'library'"),
+        ("visibility", "TEXT NOT NULL DEFAULT 'private'"),
+    ],
+    "index_jobs": [
+        ("started_by", "TEXT"),
+        ("scope", "TEXT NOT NULL DEFAULT 'library'"),
+    ],
+}
+_LATE_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_id);
+CREATE INDEX IF NOT EXISTS idx_documents_visibility ON documents(visibility);
+CREATE INDEX IF NOT EXISTS idx_jobs_scope ON index_jobs(scope);
 """
 
 _JOB_COLUMNS = (
@@ -81,6 +103,8 @@ _JOB_COLUMNS = (
     "deleted",
     "chunks",
     "failures",
+    "started_by",
+    "scope",
 )
 
 _COLUMNS = (
@@ -99,6 +123,8 @@ _COLUMNS = (
     "error_message",
     "indexed_at",
     "alt_filepaths",
+    "owner_id",
+    "visibility",
 )
 
 
@@ -119,6 +145,8 @@ class DocumentRecord:
     error_message: str | None
     indexed_at: datetime
     alt_filepaths: list[str] = field(default_factory=list)
+    owner_id: str = "library"  # a user id, or "library"
+    visibility: str = "private"  # private | public
 
     @property
     def known_paths(self) -> list[str]:
@@ -153,6 +181,8 @@ class JobRecord:
     deleted: int = 0
     chunks: int = 0
     failures: list[dict[str, str]] = field(default_factory=list)
+    started_by: str | None = None  # user id; None for runs from before accounts
+    scope: str = "library"  # library, or the user id whose folder was indexed
 
 
 @dataclass(frozen=True)
@@ -172,7 +202,21 @@ class ManifestService:
         connection = self._connect()
         with connection:
             connection.executescript(_SCHEMA)
+        self._add_missing_columns(connection)
+        with connection:
+            connection.executescript(_LATE_INDEXES)
         logger.info("manifest ready at %s", self._path)
+
+    @staticmethod
+    def _add_missing_columns(connection: sqlite3.Connection) -> None:
+        for table, columns in _ADDED_COLUMNS.items():
+            present = {
+                str(row["name"]) for row in connection.execute(f"PRAGMA table_info({table})")
+            }
+            for name, definition in columns:
+                if name not in present:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+                    logger.info("manifest: added %s.%s", table, name)
 
     def _connect(self) -> sqlite3.Connection:
         if self._connection is None:
@@ -227,20 +271,72 @@ class ManifestService:
         )
         return self._from_row(row) if row else None
 
-    def all_documents(self) -> list[DocumentRecord]:
-        rows = self._connect().execute("SELECT * FROM documents ORDER BY filename").fetchall()
+    def all_documents(
+        self,
+        readable_by: str | None = None,
+        owner_id: str | None = None,
+        visibility: str | None = None,
+    ) -> list[DocumentRecord]:
+        """Every document, or only those a user may read (their own and public ones).
+
+        owner_id and visibility narrow further; they are the admin's filters.
+        """
+        where, params = _scope_clause(readable_by, owner_id, visibility)
+        rows = (
+            self._connect()
+            .execute(f"SELECT * FROM documents{where} ORDER BY filename", params)
+            .fetchall()
+        )
         return [self._from_row(row) for row in rows]
+
+    def documents_at(self, filepath: str) -> list[DocumentRecord]:
+        """Documents whose primary path is this file: its previous versions, if any."""
+        rows = (
+            self._connect()
+            .execute("SELECT * FROM documents WHERE filepath = ?", (filepath,))
+            .fetchall()
+        )
+        return [self._from_row(row) for row in rows]
+
+    def set_visibility(self, document_ids: list[str], visibility: str) -> int:
+        connection = self._connect()
+        with connection:
+            cursor = connection.executemany(
+                "UPDATE documents SET visibility = ? WHERE document_id = ?",
+                [(visibility, document_id) for document_id in document_ids],
+            )
+        return int(cursor.rowcount or 0)
+
+    def owner_counts(self) -> dict[str, dict[str, int]]:
+        """Per owner: indexed documents, how many are public, and their passages."""
+        rows = self._connect().execute(
+            "SELECT owner_id, COUNT(*) AS documents, "
+            "SUM(CASE WHEN visibility = 'public' THEN 1 ELSE 0 END) AS public, "
+            "COALESCE(SUM(chunks), 0) AS passages "
+            "FROM documents WHERE status = 'indexed' GROUP BY owner_id"
+        )
+        return {
+            str(row["owner_id"]): {
+                "documents": int(row["documents"]),
+                "public_documents": int(row["public"] or 0),
+                "passages": int(row["passages"]),
+            }
+            for row in rows
+        }
 
     def document_ids(self) -> set[str]:
         rows = self._connect().execute("SELECT document_id FROM documents").fetchall()
         return {row["document_id"] for row in rows}
 
-    def totals(self) -> ManifestTotals:
+    def totals(self, readable_by: str | None = None) -> ManifestTotals:
+        where, params = _scope_clause(readable_by, None, None)
+        condition = f"{where} AND status = 'indexed'" if where else " WHERE status = 'indexed'"
         row = (
             self._connect()
             .execute(
                 "SELECT COUNT(*) AS documents, COALESCE(SUM(pages), 0) AS pages, "
-                "COALESCE(SUM(chunks), 0) AS chunks FROM documents WHERE status = 'indexed'"
+                f"COALESCE(SUM(chunks), 0) AS chunks FROM documents{condition}",
+                params,
             )
             .fetchone()
         )
@@ -317,12 +413,14 @@ class ManifestService:
         )
         return self._job_from_row(row) if row else None
 
-    def recent_jobs(self, limit: int = 20) -> list[JobRecord]:
-        rows = (
-            self._connect()
-            .execute("SELECT * FROM index_jobs ORDER BY started_at DESC LIMIT ?", (limit,))
-            .fetchall()
-        )
+    def recent_jobs(self, limit: int = 20, scope: str | None = None) -> list[JobRecord]:
+        """Newest first. With a scope, only the runs over that user's folder."""
+        if scope is None:
+            sql, params = "SELECT * FROM index_jobs ORDER BY started_at DESC LIMIT ?", (limit,)
+        else:
+            sql = "SELECT * FROM index_jobs WHERE scope = ? ORDER BY started_at DESC LIMIT ?"
+            params = (scope, limit)  # type: ignore[assignment]
+        rows = self._connect().execute(sql, params).fetchall()
         return [self._job_from_row(row) for row in rows]
 
     def abandon_running_jobs(self) -> int:
@@ -402,6 +500,8 @@ class ManifestService:
             record.error_message,
             record.indexed_at.isoformat(),
             json.dumps(record.alt_filepaths),
+            record.owner_id,
+            record.visibility,
         )
 
     @staticmethod
@@ -422,6 +522,8 @@ class ManifestService:
             job.deleted,
             job.chunks,
             json.dumps(job.failures),
+            job.started_by,
+            job.scope,
         )
 
     @staticmethod
@@ -444,6 +546,8 @@ class ManifestService:
             deleted=int(row["deleted"]),
             chunks=int(row["chunks"]),
             failures=json.loads(row["failures"] or "[]"),
+            started_by=row["started_by"],
+            scope=row["scope"] or "library",
         )
 
     @staticmethod
@@ -464,4 +568,25 @@ class ManifestService:
             error_message=row["error_message"],
             indexed_at=datetime.fromisoformat(row["indexed_at"]),
             alt_filepaths=json.loads(row["alt_filepaths"] or "[]"),
+            owner_id=row["owner_id"] or "library",
+            visibility=row["visibility"] or "private",
         )
+
+
+def _scope_clause(
+    readable_by: str | None, owner_id: str | None, visibility: str | None
+) -> tuple[str, tuple[object, ...]]:
+    conditions: list[str] = []
+    params: list[object] = []
+    if readable_by is not None:
+        conditions.append("(owner_id = ? OR visibility = 'public')")
+        params.append(readable_by)
+    if owner_id is not None:
+        conditions.append("owner_id = ?")
+        params.append(owner_id)
+    if visibility is not None:
+        conditions.append("visibility = ?")
+        params.append(visibility)
+    if not conditions:
+        return "", ()
+    return " WHERE " + " AND ".join(conditions), tuple(params)

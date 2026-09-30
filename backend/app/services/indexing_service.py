@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol
 
 from app.logging_config import get_logger
 from app.models.domain import ExtractedDocument
@@ -27,6 +29,14 @@ from app.services.extractors import (
     ExtractorRegistry,
 )
 from app.services.manifest_service import DocumentRecord, JobRecord, ManifestService
+from app.services.ownership import (
+    LIBRARY,
+    PRIVATE,
+    PUBLIC,
+    document_id_for,
+    owner_for,
+    users_root,
+)
 from app.services.qdrant_service import QdrantService
 
 logger = get_logger("indexing")
@@ -39,6 +49,25 @@ def _now() -> datetime:
     return datetime.now(tz=UTC)
 
 
+def _within(path: Path, folder: Path) -> bool:
+    try:
+        return path.is_relative_to(folder)
+    except ValueError:  # different drives on Windows
+        return False
+
+
+class AccessLookup(Protocol):
+    """What indexing needs to know about accounts. AccessStore provides it."""
+
+    def user_ids(self) -> set[str]: ...
+
+    def is_public(self, document_id: str) -> bool: ...
+
+    def carry_public(self, old_id: str, new_id: str) -> bool: ...
+
+    def make_private(self, document_ids: Iterable[str]) -> None: ...
+
+
 class _State:
     """Mutable run state behind a lock; snapshot() is the only way out."""
 
@@ -47,6 +76,8 @@ class _State:
         self.job_id: str | None = None
         self.trigger: str = "scan"
         self.directory: str | None = None
+        self.started_by: str | None = None
+        self.scope: str = LIBRARY
         self.current_file: str | None = None
         self.current_stage: str | None = None
         self.current_file_progress: float = 0.0
@@ -72,6 +103,7 @@ class IndexingService:
         qdrant: QdrantService,
         manifest: ManifestService,
         default_directory: Path,
+        access: AccessLookup | None = None,
     ) -> None:
         self._extractors = extractors
         self._chunker = chunker
@@ -79,6 +111,8 @@ class IndexingService:
         self._qdrant = qdrant
         self._manifest = manifest
         self._default_directory = default_directory
+        # Without it (scripts, unit tests) everything is library and private.
+        self._access = access
         self._state = _State()
         self._state_lock = threading.Lock()
         self._run_lock = threading.Lock()
@@ -109,7 +143,12 @@ class IndexingService:
         return found
 
     def start(
-        self, directory: Path | str | None, force: bool = False, trigger: str = "scan"
+        self,
+        directory: Path | str | None,
+        force: bool = False,
+        trigger: str = "scan",
+        started_by: str | None = None,
+        scope: str = LIBRARY,
     ) -> bool:
         """Reserve a run. False means one is already in progress.
 
@@ -123,6 +162,8 @@ class IndexingService:
             self._state.status = "running"
             self._state.job_id = uuid.uuid4().hex
             self._state.trigger = trigger
+            self._state.started_by = started_by
+            self._state.scope = scope
             self._state.directory = str(self.resolve_directory(directory))
             self._state.started_at = _now()
             reserved = self._state.directory
@@ -137,6 +178,7 @@ class IndexingService:
                 status=state.status,  # type: ignore[arg-type]
                 job_id=state.job_id,
                 trigger=state.trigger,
+                scope=state.scope,
                 directory=state.directory,
                 current_file=state.current_file,
                 current_stage=state.current_stage,
@@ -164,7 +206,8 @@ class IndexingService:
             self._run_lock.release()
 
     def _run(self, directory: Path, force: bool) -> None:
-        roots = self.roots(directory if directory != self._default_directory else None)
+        whole_library = directory == self._default_directory
+        roots = self.roots(None if whole_library else directory)
         readable = [root for root in roots if root.is_dir()]
         for missing in [root for root in roots if not root.is_dir()]:
             # A registered folder on an unplugged drive must not abort the run.
@@ -180,9 +223,10 @@ class IndexingService:
             self._finish("failed")
             return
 
+        known_users = self._access.user_ids() if self._access is not None else set()
         paths: list[Path] = []
         for root in readable:
-            paths.extend(self._discover(root))
+            paths.extend(self._owned(self._discover(root), known_users))
         with self._state_lock:
             self._state.total = len(paths)
         logger.info("discovered %d documents under %d folder(s)", len(paths), len(readable))
@@ -212,7 +256,8 @@ class IndexingService:
         with self._state_lock:
             self._state.current_file = None
             self._state.current_stage = "removing deleted files"
-        self._sweep_deleted(set(seen))
+        missing = [root for root in roots if not root.is_dir()]
+        self._sweep_deleted(set(seen), None if whole_library else readable, missing)
         self._finish("completed")
 
     def _discover(self, directory: Path) -> list[Path]:
@@ -224,9 +269,50 @@ class IndexingService:
         ]
         return sorted(found)
 
+    def _owned(self, paths: list[Path], known_users: set[str]) -> list[Path]:
+        """Drop files that belong to nobody.
+
+        That is a file sitting directly in users/, or one in the folder of a user who no
+        longer exists. Indexing either as library would hand someone's uploads to
+        whoever can see the library.
+        """
+        kept: list[Path] = []
+        warned: set[str] = set()
+        for path in paths:
+            owner = owner_for(path, self._default_directory)
+            if owner is not None and (owner == LIBRARY or owner in known_users):
+                kept.append(path)
+                continue
+            label = owner or str(users_root(self._default_directory))
+            if label not in warned:
+                warned.add(label)
+                logger.warning("skipping files with no owner under %s", label)
+        return kept
+
+    def _identify(self, path: Path, file_hash: str) -> tuple[str, str]:
+        owner = owner_for(path, self._default_directory) or LIBRARY
+        return owner, document_id_for(owner, file_hash)
+
+    def _visibility_for(self, document_id: str, path: Path) -> str:
+        """Public if an admin made it public, including an earlier version of this file.
+
+        A modified file hashes to a new id. Carrying the flag across means publishing a
+        manual once survives someone saving a new version of it.
+        """
+        if self._access is None:
+            return PRIVATE
+        if self._access.is_public(document_id):
+            return PUBLIC
+        for previous in self._manifest.documents_at(str(path)):
+            if previous.document_id != document_id and self._access.carry_public(
+                previous.document_id, document_id
+            ):
+                return PUBLIC
+        return PRIVATE
+
     def _process(self, path: Path, seen: dict[str, Path], force: bool) -> None:
         file_hash = self._extractors.compute_file_hash(path)
-        document_id = file_hash
+        owner_id, document_id = self._identify(path, file_hash)
 
         if document_id in seen:
             self._record_duplicate(document_id, path)
@@ -249,13 +335,15 @@ class IndexingService:
             document = extractor.extract(path, document_id=document_id, file_hash=file_hash)
         except ExtractionUnsupportedError as exc:
             logger.warning("unsupported %s: %s", path.name, exc)
-            self._store_record(path, document_id, file_hash, None, 0, "unsupported", exc)
+            self._store_record(
+                path, document_id, file_hash, None, 0, "unsupported", exc, owner_id
+            )
             self._bump("unsupported")
             return
         except ExtractionError as exc:
             logger.warning("failed %s: %s", path.name, exc)
             self._record_failure(path.name, str(path), type(exc).__name__, str(exc))
-            self._store_record(path, document_id, file_hash, None, 0, "failed", exc)
+            self._store_record(path, document_id, file_hash, None, 0, "failed", exc, owner_id)
             self._bump("failed")
             return
 
@@ -263,9 +351,13 @@ class IndexingService:
         chunks = self._chunker.chunk_document(document)
         if not chunks:
             reason = ExtractionUnsupportedError(f"{path.name} produced no passages")
-            self._store_record(path, document_id, file_hash, document, 0, "unsupported", reason)
+            self._store_record(
+                path, document_id, file_hash, document, 0, "unsupported", reason, owner_id
+            )
             self._bump("unsupported")
             return
+
+        visibility = self._visibility_for(document_id, path)
 
         # Always clear first: a re-index that yields fewer chunks must not leave the
         # previous run's surplus points behind.
@@ -274,7 +366,7 @@ class IndexingService:
         for start in range(0, len(chunks), _EMBED_SLICE):
             batch = chunks[start : start + _EMBED_SLICE]
             vectors = self._embedder.embed_documents([chunk.text for chunk in batch])
-            self._qdrant.upsert_chunks(batch, vectors, document.meta)
+            self._qdrant.upsert_chunks(batch, vectors, document.meta, owner_id, visibility)
             # Counted here rather than after the loop, so a long document's passage
             # count climbs while it is being embedded instead of jumping at the end.
             with self._state_lock:
@@ -283,21 +375,51 @@ class IndexingService:
                     1.0, (start + len(batch)) / max(1, len(chunks))
                 )
 
-        self._store_record(path, document_id, file_hash, document, len(chunks), "indexed", None)
+        self._store_record(
+            path, document_id, file_hash, document, len(chunks), "indexed", None, owner_id,
+            visibility,
+        )
         self._bump("indexed")
         logger.info(
             "indexed %s: pages=%d chunks=%d", path.name, len(document.pages), len(chunks)
         )
 
-    def _sweep_deleted(self, seen_ids: set[str]) -> None:
+    def _sweep_deleted(
+        self,
+        seen_ids: set[str],
+        roots: list[Path] | None = None,
+        missing: list[Path] | None = None,
+    ) -> None:
         """Remove entries for ids that no file on disk produces any more.
 
         Covers deleted files and the stale ids left behind by modified ones, because a
         modified file hashes to a new id.
+
+        Only documents the run could have seen are candidates: with `roots`, those with
+        a path under one of them, so indexing one user's folder never touches anybody
+        else's documents. Documents under a folder that could not be read are never
+        candidates, so an unplugged drive does not empty its part of the library.
         """
-        for document_id in self._manifest.document_ids() - seen_ids:
+        records = self._manifest.all_documents()
+        if roots is not None:
+            records = [
+                record
+                for record in records
+                if any(_within(Path(known), root) for known in record.known_paths for root in roots)
+            ]
+        if missing:
+            records = [
+                record
+                for record in records
+                if not any(
+                    _within(Path(known), root) for known in record.known_paths for root in missing
+                )
+            ]
+        for document_id in {record.document_id for record in records} - seen_ids:
             self._qdrant.delete_document(document_id)
             self._manifest.delete(document_id)
+            if self._access is not None:
+                self._access.make_private([document_id])
             self._bump("deleted")
             logger.info("removed vanished document %s", document_id[:12])
 
@@ -312,8 +434,12 @@ class IndexingService:
         chunks: int,
         status: str,
         error: Exception | None,
+        owner_id: str = LIBRARY,
+        visibility: str | None = None,
     ) -> None:
         existing = self._manifest.get(document_id)
+        if visibility is None:
+            visibility = self._visibility_for(document_id, path)
         self._manifest.upsert(
             DocumentRecord(
                 document_id=document_id,
@@ -331,6 +457,8 @@ class IndexingService:
                 error_message=str(error) if error else None,
                 indexed_at=_now(),
                 alt_filepaths=existing.alt_filepaths if existing else [],
+                owner_id=owner_id,
+                visibility=visibility,
             )
         )
 
@@ -339,7 +467,8 @@ class IndexingService:
             file_hash = self._extractors.compute_file_hash(path)
         except Exception:
             return
-        self._store_record(path, file_hash, file_hash, None, 0, "failed", error)
+        owner_id, document_id = self._identify(path, file_hash)
+        self._store_record(path, document_id, file_hash, None, 0, "failed", error, owner_id)
         self._bump("failed")
 
     def _record_duplicate(self, document_id: str, path: Path) -> None:
@@ -420,6 +549,8 @@ class IndexingService:
                 failed=state.failed,
                 deleted=state.deleted,
                 chunks=state.chunks,
+                started_by=state.started_by,
+                scope=state.scope,
                 failures=[
                     {
                         "filename": failure.filename,
@@ -444,7 +575,9 @@ class IndexingService:
             return None
         self._qdrant.delete_document(document_id)
         self._manifest.delete(document_id)
-        logger.info("removed %s from the index (file left on disk)", record.filename)
+        if self._access is not None:
+            self._access.make_private([document_id])
+        logger.info("removed %s from the index", record.filename)
         return record
 
     def clear_index(self) -> tuple[int, int]:

@@ -50,6 +50,8 @@ export function makeDocument(overrides: Partial<DocumentSummary> = {}): Document
     error_message: null,
     alt_filepaths: [],
     indexed_at: '2026-09-20T12:00:00Z',
+    visibility: 'private',
+    is_mine: true,
     ...overrides,
   }
 }
@@ -88,6 +90,7 @@ export function makeLibrary(overrides: Partial<Library> = {}): Library {
     refresh: vi.fn().mockResolvedValue(undefined),
     runIndexing: vi.fn().mockResolvedValue(undefined),
     importFiles: vi.fn().mockResolvedValue(undefined),
+    setVisibility: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     clearAll: vi.fn().mockResolvedValue(undefined),
     dismissError: vi.fn(),

@@ -1,7 +1,7 @@
 @echo off
 rem DocSage - start.
 rem   run.bat        on this computer only
-rem   run.bat lan    also reachable from the local network, with no login
+rem   run.bat lan    also reachable from the local network; everyone logs in
 setlocal EnableExtensions EnableDelayedExpansion
 title DocSage - starting
 cd /d "%~dp0"
@@ -87,9 +87,8 @@ if /i "%BIND%"=="0.0.0.0" (
         for /f "tokens=*" %%B in ("%%A") do echo       http://%%B:%PORT%/
     )
     echo.
-    echo   There is no login. Anyone who can reach that address can search every
-    echo   indexed document, open the PDFs and clear the index. Use run.bat
-    echo   without "lan" when you are finished.
+    echo   Everyone logs in and sees only their own documents and public ones.
+    echo   The connection is not encrypted: use this on a network you trust.
 )
 echo.
 echo   The window titled "SPS Server" holds the log. Leave it open.

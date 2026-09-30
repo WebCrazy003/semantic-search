@@ -2,12 +2,19 @@
 import { DownloadOutlined, ExportOutlined } from '@ant-design/icons'
 import { Button, Empty, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { documentFileUrl, type DocumentSummary } from '../services/api'
+import { useState } from 'react'
+import { documentFileUrl, type DocumentSummary, type Visibility } from '../services/api'
+import { VisibilitySwitch, VisibilityTag } from './VisibilityTag'
 
 interface Props {
   documents: DocumentSummary[]
   busy?: boolean
+  /** Offered only on documents the viewer may remove: their own, or any for an admin. */
   onRemove?: (documentId: string) => void
+  /** Admins: owner column, visibility switches and bulk publishing. */
+  admin?: boolean
+  onVisibility?: (documentIds: string[], visibility: Visibility) => void
+  empty?: string
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -17,15 +24,24 @@ const STATUS_TONE: Record<string, string> = {
   failed: 'error',
 }
 
-export function DocumentList({ documents, busy = false, onRemove }: Props) {
+export function DocumentList({
+  documents,
+  busy = false,
+  onRemove,
+  admin = false,
+  onVisibility,
+  empty = 'No documents indexed yet. Import files above, then index.',
+}: Props) {
+  const [selected, setSelected] = useState<string[]>([])
+
   if (documents.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="No documents indexed yet. Add a folder or import files above, then index."
-      />
-    )
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={empty} />
   }
+
+  const canRemove = (document: DocumentSummary) => admin || !!document.is_mine
+  const owners = Array.from(
+    new Set(documents.map((document) => document.owner_username ?? 'Library')),
+  ).sort()
 
   const columns: ColumnsType<DocumentSummary> = [
     {
@@ -66,11 +82,52 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
               {document.alt_filepaths.length === 1 ? '' : 's'}
             </Typography.Text>
           ) : null}
-          <Typography.Text type="secondary" className="doc-path" title={document.filepath}>
-            {document.filepath}
-          </Typography.Text>
+          {document.filepath ? (
+            <Typography.Text type="secondary" className="doc-path" title={document.filepath}>
+              {document.filepath}
+            </Typography.Text>
+          ) : null}
         </div>
       ),
+    },
+    ...(admin
+      ? [
+          {
+            title: 'Owner',
+            key: 'owner',
+            filters: owners.map((owner) => ({ text: owner, value: owner })),
+            onFilter: (value: boolean | React.Key, document: DocumentSummary) =>
+              (document.owner_username ?? 'Library') === value,
+            sorter: (left: DocumentSummary, right: DocumentSummary) =>
+              (left.owner_username ?? '').localeCompare(right.owner_username ?? ''),
+            render: (_: unknown, document: DocumentSummary) =>
+              document.owner_username ? (
+                <Typography.Text>{document.owner_username}</Typography.Text>
+              ) : (
+                <Tag>Library</Tag>
+              ),
+          },
+        ]
+      : []),
+    {
+      title: 'Visibility',
+      key: 'visibility',
+      filters: [
+        { text: 'Public', value: 'public' },
+        { text: 'Private', value: 'private' },
+      ],
+      onFilter: (value, document) => (document.visibility ?? 'private') === value,
+      render: (_: unknown, document: DocumentSummary) =>
+        admin && onVisibility ? (
+          <VisibilitySwitch
+            filename={document.filename}
+            visibility={document.visibility}
+            disabled={busy}
+            onChange={(visibility) => onVisibility([document.document_id], visibility)}
+          />
+        ) : (
+          <VisibilityTag visibility={document.visibility} />
+        ),
     },
     {
       title: 'Size',
@@ -120,38 +177,81 @@ export function DocumentList({ documents, busy = false, onRemove }: Props) {
     columns.push({
       title: 'Action',
       key: 'action',
-      render: (_: unknown, document: DocumentSummary) => (
-        <Popconfirm
-          title="Remove from the index?"
-          description="The file stays in its folder, so the next job picks it up again."
-          okText="Remove"
-          okButtonProps={{ danger: true }}
-          onConfirm={() => onRemove(document.document_id)}
-          disabled={busy}
-        >
-          <Button
-            type="text"
-            danger
-            size="small"
+      render: (_: unknown, document: DocumentSummary) =>
+        canRemove(document) ? (
+          <Popconfirm
+            title="Remove from the index?"
+            description={
+              document.owner_id === 'library'
+                ? 'The file stays in its folder, so the next job picks it up again.'
+                : 'The uploaded file is deleted too.'
+            }
+            okText="Remove"
+            okButtonProps={{ danger: true }}
+            onConfirm={() => onRemove(document.document_id)}
             disabled={busy}
-            aria-label={`Remove ${document.filename} from the index`}
           >
-            Remove
-          </Button>
-        </Popconfirm>
-      ),
+            <Button
+              type="text"
+              danger
+              size="small"
+              disabled={busy}
+              aria-label={`Remove ${document.filename} from the index`}
+            >
+              Remove
+            </Button>
+          </Popconfirm>
+        ) : null,
     })
   }
 
+  const bulk = admin && onVisibility
   return (
-    <Table
-      size="small"
-      rowKey="document_id"
-      columns={columns}
-      dataSource={documents}
-      pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
-      scroll={{ x: 'max-content' }}
-    />
+    <>
+      {bulk ? (
+        <Space className="bulk-actions" wrap>
+          <Typography.Text type="secondary">
+            {selected.length > 0 ? `${selected.length} selected` : 'Select documents to publish them together'}
+          </Typography.Text>
+          <Button
+            size="small"
+            disabled={busy || selected.length === 0}
+            onClick={() => {
+              onVisibility(selected, 'public')
+              setSelected([])
+            }}
+          >
+            Make public
+          </Button>
+          <Button
+            size="small"
+            disabled={busy || selected.length === 0}
+            onClick={() => {
+              onVisibility(selected, 'private')
+              setSelected([])
+            }}
+          >
+            Make private
+          </Button>
+        </Space>
+      ) : null}
+      <Table
+        size="small"
+        rowKey="document_id"
+        columns={columns}
+        dataSource={documents}
+        rowSelection={
+          bulk
+            ? {
+                selectedRowKeys: selected,
+                onChange: (keys) => setSelected(keys.map(String)),
+              }
+            : undefined
+        }
+        pagination={{ pageSize: 10, showSizeChanger: true, pageSizeOptions: [10, 25, 50, 100] }}
+        scroll={{ x: 'max-content' }}
+      />
+    </>
   )
 }
 

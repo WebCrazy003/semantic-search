@@ -77,6 +77,17 @@ class Settings(BaseSettings):
 
     # Storage
     manifest_path: Path = Path("./data/manifest.db")
+    # Accounts, sessions, reset requests and which documents are public. Unlike the
+    # manifest this is not derivable from anything, so nothing ever rebuilds or clears it.
+    access_db_path: Path = Path("./data/access.db")
+
+    # Accounts
+    auth_session_idle_days: int = Field(default=7, ge=1)
+    auth_session_max_days: int = Field(default=30, ge=1)
+    # Only behind HTTPS: over plain HTTP a Secure cookie is never sent back.
+    auth_cookie_secure: bool = False
+    auth_login_max_failures: int = Field(default=5, ge=1)
+    auth_reset_request_hours: int = Field(default=24, ge=1)
 
     # Service
     api_host: str = "127.0.0.1"
@@ -85,7 +96,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     debug_log_text: bool = False
 
-    @field_validator("pdf_directory", "bge_model_path", "manifest_path", mode="after")
+    @field_validator(
+        "pdf_directory", "bge_model_path", "manifest_path", "access_db_path", mode="after"
+    )
     @classmethod
     def _resolve(cls, value: Path) -> Path:
         return value if value.is_absolute() else (REPO_ROOT / value).resolve()

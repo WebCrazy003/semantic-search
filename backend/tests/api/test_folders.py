@@ -84,8 +84,10 @@ class TestRegistering:
         client.post("/api/folders", json={"path": str(outside)})
 
         from app.main import create_app
+        from tests.api.conftest import ADMIN_NAME, CSRF, login
 
-        with TestClient(create_app(container=container)) as fresh:
+        with TestClient(create_app(container=container), headers=CSRF) as fresh:
+            login(fresh, ADMIN_NAME)
             assert [f["path"] for f in fresh.get("/api/folders").json() if not f["is_default"]] == [
                 str(outside)
             ]

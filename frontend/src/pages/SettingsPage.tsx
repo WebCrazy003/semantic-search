@@ -1,16 +1,14 @@
 // frontend/src/pages/SettingsPage.tsx
-import { ExperimentOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Button, Card, Form, Popconfirm, Radio, Segmented, Select, Space, Switch, Typography } from 'antd'
+import { ExperimentOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons'
+import { Button, Card, Form, Popconfirm, Segmented, Select, Space, Switch, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
+import { AppearanceSettings } from '../components/AppearanceSettings'
 import { DeviceStatus } from '../components/DeviceStatus'
 import {
-  ACCENTS,
   LANGUAGES,
   TOP_K_CHOICES,
-  type Density,
   type DetailView,
   type PreviewLines,
-  type ThemeChoice,
 } from '../settings/settings'
 import { useSettings } from '../settings/SettingsContext'
 
@@ -32,60 +30,7 @@ export function SettingsPage() {
       </div>
 
       <Card title="Appearance" className="settings-card">
-        <Form layout="horizontal" labelCol={{ span: 8 }} wrapperCol={{ span: 16 }} colon={false}>
-          <Form.Item label="Theme">
-            <Segmented<ThemeChoice>
-              value={settings.theme}
-              onChange={(value) => update('theme', value)}
-              options={[
-                { label: 'System', value: 'system' },
-                { label: 'Light', value: 'light' },
-                { label: 'Dark', value: 'dark' },
-              ]}
-            />
-          </Form.Item>
-
-          <Form.Item label="Accent colour">
-            <Radio.Group
-              value={settings.accent}
-              onChange={(event) => update('accent', event.target.value)}
-              aria-label="Accent colour"
-            >
-              {ACCENTS.map((accent) => (
-                <Radio.Button key={accent.value} value={accent.value} aria-label={accent.label}>
-                  <span
-                    className="accent-swatch"
-                    style={{ background: accent.value }}
-                    aria-hidden="true"
-                  />
-                  {accent.label}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
-          </Form.Item>
-
-          <Form.Item label="Density" help="Compact fits more on screen at a smaller text size.">
-            <Segmented<Density>
-              value={settings.density}
-              onChange={(value) => update('density', value)}
-              options={[
-                { label: 'Comfortable', value: 'comfortable' },
-                { label: 'Compact', value: 'compact' },
-              ]}
-            />
-          </Form.Item>
-
-          <Form.Item
-            label="Animations"
-            help="Off also stops the aggregation cards animating when they minimise."
-          >
-            <Switch
-              checked={settings.animations}
-              onChange={(value) => update('animations', value)}
-              aria-label="Animations"
-            />
-          </Form.Item>
-        </Form>
+        <AppearanceSettings />
       </Card>
 
       <Card title="Search" className="settings-card">
@@ -151,6 +96,15 @@ export function SettingsPage() {
       </Card>
 
       <Card title="Administration" className="settings-card">
+        <Space wrap className="settings-admin-links">
+          <Button
+            type="primary"
+            icon={<TeamOutlined aria-hidden="true" />}
+            onClick={() => navigate('/admin/users')}
+          >
+            Manage users
+          </Button>
+        </Space>
         <Typography.Paragraph type="secondary">
           Inspect the text extracted from a document, how the index is structured, and how a
           document was split into passages. Useful when a search result looks wrong and you want
@@ -158,7 +112,6 @@ export function SettingsPage() {
         </Typography.Paragraph>
         <Space wrap>
           <Button
-            type="primary"
             icon={<ExperimentOutlined aria-hidden="true" />}
             onClick={() => navigate('/admin')}
           >

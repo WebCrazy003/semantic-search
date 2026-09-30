@@ -81,6 +81,10 @@ _PAYLOAD_FIELDS: list[PayloadField] = [
     PayloadField(name="title", type="text", description="The document's title, when it has one"),
     PayloadField(name="folder", type="keyword", description="The library folder the file was found in"),
     PayloadField(name="kind", type="keyword", description="text, table or heading"),
+    PayloadField(name="owner_id", type="keyword", indexed=True,
+                 description="Who owns the document: a user id, or library"),
+    PayloadField(name="visibility", type="keyword", indexed=True,
+                 description="private (owner and admins) or public (every user)"),
 ]
 
 
