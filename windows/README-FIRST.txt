@@ -58,9 +58,10 @@ A PDF or Word file will not index
 
 Indexing is slow
     The Indexing page says whether it runs on the GPU or the CPU. With an NVIDIA
-    GeForce RTX card (20-series or newer), install NVIDIA's latest display
-    driver, version 580 or newer; nothing else is needed. Without one, indexing
-    uses the CPU, which works but takes longer. Searching is fast either way.
+    GeForce RTX card (20-series or newer), install an NVIDIA display driver,
+    version 528 or newer (570 or newer for an RTX 50-series card); nothing
+    else is needed. Without one, indexing uses the CPU, which works but takes
+    longer. Searching is fast either way.
 
 
 Sharing it on your network

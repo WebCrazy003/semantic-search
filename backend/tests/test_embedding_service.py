@@ -54,7 +54,7 @@ def fake_cuda(monkeypatch: pytest.MonkeyPatch):
         lambda index: _Props(state["name"], state["memory_gb"]),
     )
     monkeypatch.setattr(torch, "ones", ones)
-    monkeypatch.setattr(torch.version, "cuda", "13.0")
+    monkeypatch.setattr(torch.version, "cuda", "12.8")
     return state
 
 

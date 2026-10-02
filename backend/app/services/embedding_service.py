@@ -103,7 +103,7 @@ def gpu_batch_size(memory_gb: float) -> int:
 def _no_cuda_reason(torch: Any) -> str | None:
     if not torch.version.cuda:
         return None  # a CPU-only build on purpose: macOS, or a dev install
-    return "no NVIDIA GPU found, or its driver is older than 580"
+    return "no NVIDIA GPU found, or its driver is older than 528 (570 on RTX 50)"
 
 
 def _first_line(exc: BaseException) -> str:

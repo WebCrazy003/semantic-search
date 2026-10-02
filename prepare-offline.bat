@@ -20,8 +20,8 @@ set "WINGET_LINKS=%LOCALAPPDATA%\Microsoft\WinGet\Links"
 set "UV_BIN=%USERPROFILE%\.local\bin"
 set "NODE_BIN=%ProgramFiles%\nodejs"
 set "PATH=%UV_BIN%;%NODE_BIN%;%WINGET_LINKS%;%PATH%"
-rem PyTorch's CUDA index. uv export pins torch==X+cu130 but leaves the index out.
-set "TORCH_CUDA=cu130"
+rem PyTorch's CUDA index. uv export pins torch==X+cu128 but leaves the index out.
+set "TORCH_CUDA=cu128"
 set "TORCH_INDEX=https://download.pytorch.org/whl/%TORCH_CUDA%"
 rem Keep the interpreter this build downloads inside the build folder.
 set "UV_PYTHON_INSTALL_DIR=%BUILD%\python"
@@ -220,7 +220,7 @@ if exist "%BUILD%\vc_redist.x64.exe" (
 >"%RELEASE%\VERSION.txt" echo DocSage %VERSION% - find knowledge locally (win64, offline)
 >>"%RELEASE%\VERSION.txt" echo Built %DATE% %TIME% on %COMPUTERNAME%
 >>"%RELEASE%\VERSION.txt" echo Python %PY_VERSION%
->>"%RELEASE%\VERSION.txt" echo PyTorch CUDA build %TORCH_CUDA%, NVIDIA driver 580 or newer for GPU indexing
+>>"%RELEASE%\VERSION.txt" echo PyTorch CUDA build %TORCH_CUDA%, NVIDIA driver 528 or newer (570 or newer on RTX 50) for GPU indexing
 copy /y "%BUILD%\requirements.txt" "%RELEASE%\runtime\requirements.txt" >nul
 set "BROKEN="
 for %%F in (run.bat stop.bat check.bat README-FIRST.txt .env VERSION.txt) do (

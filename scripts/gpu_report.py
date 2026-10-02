@@ -41,7 +41,7 @@ def check_build() -> int:
     print(f"      torch {torch.__version__}")
     if not torch.version.cuda:
         print("FAIL  this is a CPU-only PyTorch; the GPU would never be used.")
-        print("      The CUDA build comes from https://download.pytorch.org/whl/cu130")
+        print("      The CUDA build comes from https://download.pytorch.org/whl/cu128")
         return 1
     arches = compiled_arches(torch)
     print(f"OK    CUDA {torch.version.cuda} build, kernels: {' '.join(arches) or '(unknown)'}")
@@ -73,7 +73,7 @@ def report() -> int:
         )
     elif torch.version.cuda:
         print("NOTE  no usable NVIDIA GPU; indexing will run on the CPU.")
-        print("      With an RTX card, update the NVIDIA driver to 580 or newer.")
+        print("      With an RTX card, update the NVIDIA driver to 528 or newer (570 on RTX 50).")
     elif torch.backends.mps.is_available():
         print("OK    Apple GPU (MPS)")
     else:

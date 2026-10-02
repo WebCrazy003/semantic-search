@@ -134,7 +134,7 @@ Indexing ten documents takes a few minutes the first time. After that you can di
 |---|---|
 | Search speed | Under one second |
 | Starting the tool | Ten to thirty seconds, while the language model loads |
-| Indexing speed | A few minutes for ten documents, then only new files are processed. On a Windows PC with an NVIDIA GeForce RTX card (20-series or newer, driver 580 or newer) indexing uses the graphics card and is much faster |
+| Indexing speed | A few minutes for ten documents, then only new files are processed. On a Windows PC with an NVIDIA GeForce RTX card (20-series or newer, driver 528 or newer, 570 or newer for RTX 50) indexing uses the graphics card and is much faster |
 | Documents supported | Built for ten, designed to grow to thousands without rework |
 
 ## 11. Not in this version

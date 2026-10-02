@@ -133,15 +133,16 @@ macOS keeps the PyPI wheel and uses the Apple GPU (mps).
 
 | | |
 |---|---|
-| PyTorch build | `2.14.0+cu130` (CUDA 13.0), from `download.pytorch.org/whl/cu130` |
+| PyTorch build | `2.11.0+cu128` (CUDA 12.8), from `download.pytorch.org/whl/cu128` |
 | Cards | GeForce RTX 20, 30, 40 and 50-series (GTX 16 too). Tested first on the RTX 5060 |
 | Kernels in the build | `sm_75` (RTX 20), `sm_86` (RTX 30, and RTX 40 through it), `sm_120` (RTX 50); `prepare-offline.bat` fails the build if any is missing |
-| Driver | NVIDIA display driver **580 or newer**. No CUDA Toolkit is needed; the runtime ships inside the wheel |
+| Driver | NVIDIA display driver **528 or newer**, and **570 or newer** on RTX 50 (the oldest drivers those cards run). Any later driver works too. No CUDA Toolkit is needed; the runtime ships inside the wheel |
 | Not supported | GTX 10-series and older, AMD and Intel GPUs. They index on the CPU |
 
-`cu130` is used because it is the oldest PyTorch CUDA index that has the locked torch
-with Blackwell (RTX 50) kernels. `cu126` has no RTX 50 support and `cu128` does not
-publish this torch version.
+`cu128` is the oldest PyTorch CUDA index with Blackwell (RTX 50) kernels. As a CUDA 12
+build it runs on any driver from 528 up, through NVIDIA's minor-version compatibility;
+`cu130` (CUDA 13) would need 580+. `cu126` has no RTX 50 support. `cu128` stops at
+torch 2.11, so torch is capped below 2.12 on every platform.
 
 At startup the backend runs a test kernel on the GPU before trusting it. A driver that
 is too old or a card the build has no kernels for falls back to the CPU, with the
@@ -276,8 +277,8 @@ than failing the run.
 | Document counts look wrong | `scripts/rebuild_manifest.py` |
 | No admin can log in | `scripts/reset_admin.py <username>` on the machine itself |
 | A user cannot see a document | It is private to its owner; an admin can make it public |
-| Indexing is slow | The Indexing page says which device is used. On Windows with an RTX card, update the NVIDIA driver to 580+ |
-| Windows: "the NVIDIA GPU could not be used" | Driver older than 580, or a card older than RTX 20; it runs on the CPU meanwhile |
+| Indexing is slow | The Indexing page says which device is used. On Windows with an RTX card, update the NVIDIA driver to 528+ (570+ on RTX 50) |
+| Windows: "the NVIDIA GPU could not be used" | Driver older than 528 (570 on RTX 50), or a card older than RTX 20; it runs on the CPU meanwhile |
 | Windows: PyTorch will not import | Run `runtime\vc_redist.x64.exe` as administrator |
 | Windows: run.bat says the release is incomplete | Copy the release folder across again, whole |
 | Windows: anything else | `check.bat` in the release folder |
