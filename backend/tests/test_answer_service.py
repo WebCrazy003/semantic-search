@@ -6,6 +6,7 @@ import pytest
 from app.models.response_models import SearchHit, SearchResponse
 from app.services.answer_model import AnswerModelUnavailable
 from app.services.answer_service import NOT_FOUND, UNAVAILABLE, AnswerService, Event
+from tests.conftest import FakeReranker
 
 
 class FakeModel:
@@ -99,11 +100,11 @@ class TestEvents:
         assert events[-1][1]["status"] == "not_found"
         assert model.calls == []
 
-    def test_hits_below_the_threshold_are_not_used(self) -> None:
-        model = FakeModel()
+    def test_the_threshold_ignores_hits_that_were_not_reranked(self) -> None:
+        # A search score is not comparable across questions, so it is never cut on.
+        model = FakeModel("Answer [1].")
         events = collect(AnswerService(model, min_score=0.5), "question", "x", score=0.3)
-        assert events[-1][1]["status"] == "not_found"
-        assert events[0][1]["count"] == 1  # the results themselves are still shown
+        assert events[-1][1]["status"] == "answered"
 
     def test_without_a_model_the_results_come_then_an_error(self) -> None:
         events = collect(AnswerService(None), "如何更换滤芯", "x")
@@ -128,6 +129,92 @@ class TestEvents:
         events = collect(AnswerService(FakeModel("")), "question here", "x")
         assert names(events) == ["results", "sources", "error"]
         assert events[-1][1]["code"] == "failed"
+
+
+class TestReranking:
+    def test_results_are_sent_in_search_order_and_answered_in_reranked_order(self) -> None:
+        reranker = FakeReranker()
+        model = FakeModel("Answer [1].")
+        events = collect(
+            AnswerService(model, reranker=reranker), "滤芯更换", "保修条款", "滤芯型号", "更换滤芯"
+        )
+        assert [hit["text"] for hit in events[0][1]["results"]] == [
+            "保修条款",
+            "滤芯型号",
+            "更换滤芯",
+        ]
+        sources = events[1][1]["passages"]
+        assert [p["chunk_index"] for p in sources] == [2, 1, 0]
+        assert (
+            '<source id="1" file="manual.pdf" pages="1">\n更换滤芯' in model.calls[0][1]["content"]
+        )
+
+    def test_only_the_first_candidates_are_reranked(self) -> None:
+        reranker = FakeReranker()
+        collect(
+            AnswerService(FakeModel("A [1]."), reranker=reranker, rerank_candidates=2),
+            "q",
+            "a",
+            "b",
+            "c",
+        )
+        assert reranker.seen == [["a", "b"]]
+
+    def test_the_threshold_cuts_on_the_rerank_score(self) -> None:
+        model = FakeModel()
+        events = collect(
+            AnswerService(model, reranker=FakeReranker(), min_score=0.5), "滤芯", "保修条款"
+        )
+        assert events[-1][1]["status"] == "not_found"
+        assert events[0][1]["count"] == 1  # the results themselves are still shown
+        assert model.calls == []
+
+    def test_each_source_carries_its_relevance(self) -> None:
+        events = collect(
+            AnswerService(FakeModel("A [1]."), reranker=FakeReranker()), "滤芯", "滤芯型号", "保修"
+        )
+        assert [p["relevance"] for p in events[1][1]["passages"]] == [1.0, 0.0]
+        assert events[1][1]["top_relevance"] == 1.0
+        # The results that were sent are never changed by the ranking.
+        assert "relevance" not in events[0][1]["results"][0]
+
+    def test_without_a_reranker_sources_have_no_relevance(self) -> None:
+        events = collect(AnswerService(FakeModel("A [1].")), "q", "a")
+        assert events[1][1]["passages"][0]["relevance"] is None
+
+    def test_results_past_the_candidates_are_not_answered_from(self) -> None:
+        # Unscored, they would slip past the threshold.
+        events = collect(
+            AnswerService(FakeModel("A [1]."), reranker=FakeReranker(), rerank_candidates=2),
+            "q",
+            "a",
+            "b",
+            "c",
+        )
+        assert sorted(p["chunk_index"] for p in events[1][1]["passages"]) == [0, 1]
+
+    def test_repeated_text_is_scored_once(self) -> None:
+        reranker = FakeReranker()
+        collect(
+            AnswerService(FakeModel("A [1]."), reranker=reranker),
+            "q",
+            "same  text",
+            "same text",
+            "b",
+        )
+        assert reranker.seen == [["same  text", "b"]]
+
+    def test_nothing_is_reranked_without_an_answer_model(self) -> None:
+        reranker = FakeReranker()
+        collect(AnswerService(None, reranker=reranker), "q", "a")
+        assert reranker.seen == []
+
+    def test_a_failing_reranker_falls_back_to_the_search_order(self) -> None:
+        events = collect(
+            AnswerService(FakeModel("A [1]."), reranker=FakeReranker(fail=True)), "q", "a", "b"
+        )
+        assert events[-1][1]["status"] == "answered"
+        assert [p["chunk_index"] for p in events[1][1]["passages"]] == [0, 1]
 
 
 class TestLanguageGuard:

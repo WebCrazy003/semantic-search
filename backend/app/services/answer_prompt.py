@@ -39,8 +39,8 @@ brackets, like this: The filter is replaced every three months [2]. Use [1][3] f
 several sources. Cite only source numbers that exist.
 3. If a source answers the question, answer it and stop. If the question asks several \
 things and the sources answer only some, answer those and name the ones they do not \
-cover. Only when no source is relevant, say in one sentence that the documents do not \
-contain the answer. Do not otherwise comment on what the documents leave out.
+cover. Only when no source is relevant, say in one sentence, with no citation, that the \
+documents do not contain the answer. Do not otherwise comment on what they leave out.
 4. Write the whole answer in {language}, even when the sources are in another language.
 5. Copy numbers, units, model numbers and part names exactly as the sources write them. \
 Translate every other word. When you translate a term from a source in another \

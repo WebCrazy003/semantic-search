@@ -1,0 +1,39 @@
+{
+  "corpus": "answer_corpus",
+  "notes": "language is the answer language expected. facts must each appear in the answer (spaces ignored), and must not be satisfied by a shorter number or by the question's own words. An unanswerable case passes when the answer is 'not found' or cites nothing, and contains none of its forbid strings.",
+  "cases": [
+    {"id": "zh-q-zh-doc-seal", "query": "机械密封泄漏多少时需要更换？最终拧紧扭矩是多少？", "language": "zh-Hans",
+     "expect": {"filename": "pump_zh.pdf", "page": 2}, "facts": ["5滴", "25N·m"]},
+    {"id": "ko-q-zh-doc-filter", "query": "펌프 필터 카트리지는 얼마나 자주 교체해야 하나요?", "language": "ko",
+     "expect": {"filename": "pump_zh.pdf", "page": 3}, "facts": ["0.15"]},
+    {"id": "en-q-zh-doc-pressure", "query": "What is the maximum working pressure of the pump?", "language": "en",
+     "expect": {"filename": "pump_zh.pdf", "page": 1}, "facts": ["1.0"]},
+
+    {"id": "ko-q-ko-doc-oil", "query": "압축기 오일은 언제 교체하고 어떤 오일을 써야 하나요?", "language": "ko",
+     "expect": {"filename": "compressor_ko.pdf", "page": 2}, "facts": ["500", "VG46"]},
+    {"id": "zh-q-ko-doc-warranty", "query": "空压机的保修期是多久？", "language": "zh-Hans",
+     "expect": {"filename": "compressor_ko.pdf", "page": 3}, "facts": ["24", "30"]},
+    {"id": "en-q-ko-doc-valve", "query": "What is the safety valve set pressure of the air compressor?", "language": "en",
+     "expect": {"filename": "compressor_ko.pdf", "page": 1}, "facts": ["0.95"]},
+    {"id": "hant-q-ko-doc-valve", "query": "這台空壓機的安全閥設定壓力是多少？", "language": "zh-Hant",
+     "expect": {"filename": "compressor_ko.pdf", "page": 1}, "facts": ["0.95"]},
+
+    {"id": "en-q-en-doc-e07", "query": "What does alarm E-07 mean and what should I do?", "language": "en",
+     "expect": {"filename": "chiller_en.pdf", "page": 2}, "facts": ["140", "30"]},
+    {"id": "zh-q-en-doc-refrigerant", "query": "冷水机使用什么制冷剂？充注量是多少？", "language": "zh-Hans",
+     "expect": {"filename": "chiller_en.pdf", "page": 1}, "facts": ["R-513A", "3.2"]},
+    {"id": "ko-q-en-doc-e04", "query": "E-04 알람이 10분 넘게 계속되면 어떻게 되나요?", "language": "ko",
+     "expect": {"filename": "chiller_en.pdf", "page": 2}, "facts": ["펌프"]},
+
+    {"id": "en-unanswerable-seawater", "query": "Can the centrifugal pump be used to pump seawater?", "language": "en",
+     "unanswerable": true},
+    {"id": "ko-unanswerable-weight", "query": "공기압축기의 무게는 몇 kg인가요?", "language": "ko",
+     "unanswerable": true},
+    {"id": "zh-unanswerable-outdoor", "query": "冷水机可以安装在室外吗？", "language": "zh-Hans",
+     "unanswerable": true},
+    {"id": "en-out-of-domain", "query": "What is the capital of France?", "language": "en",
+     "unanswerable": true, "forbid": ["Paris"]},
+    {"id": "ko-out-of-domain", "query": "김치찌개는 어떻게 끓이나요?", "language": "ko",
+     "unanswerable": true}
+  ]
+}

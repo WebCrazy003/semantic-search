@@ -95,3 +95,8 @@ def test_an_unknown_precision_is_rejected(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("EMBEDDING_PRECISION", "int4")
     with pytest.raises(ValueError):
         Settings(_env_file=None)
+
+
+def test_reranking_fewer_results_than_an_answer_uses_is_rejected() -> None:
+    with pytest.raises(ValueError, match="rag_rerank_candidates"):
+        Settings(_env_file=None, rag_rerank_candidates=3, rag_context_passages=6)

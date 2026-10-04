@@ -102,3 +102,22 @@ def test_an_answer_never_draws_on_someone_elses_documents(
     prompt = model.calls[0][1]["content"]
     assert 'file="lee.pdf"' in prompt
     assert "kim.pdf" not in prompt
+
+
+def test_an_answer_is_reranked_after_the_results_and_a_search_is_not(
+    indexed_client: TestClient, container: Container
+) -> None:
+    from tests.conftest import FakeReranker
+
+    reranker = FakeReranker()
+    container.answers = AnswerService(FakeModel("Answer [1]."), reranker=reranker)
+    body = {"query": "如何更换滤芯", "top_k": 3}
+
+    searched = indexed_client.post("/api/search", json=body).json()
+    asked = events(indexed_client.post("/api/ask", json=body))
+
+    assert searched["count"] == asked[0][1]["count"] == 3
+    # The results go out first, so the list never waits for the reranker.
+    assert [name for name, _ in asked][:2] == ["results", "sources"]
+    assert len(reranker.seen) == 1
+    assert all(p["relevance"] is not None for p in asked[1][1]["passages"])

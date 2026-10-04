@@ -67,6 +67,23 @@ class FakeEmbeddingService:
         return None
 
 
+class FakeReranker:
+    """Scores a passage by the share of the query's characters it contains."""
+
+    def __init__(self, fail: bool = False) -> None:
+        self.seen: list[list[str]] = []
+        self.fail = fail
+
+    def scores(self, query: str, texts: list[str]) -> list[float]:
+        self.seen.append(texts)
+        if self.fail:
+            raise RuntimeError("out of memory")
+        return [sum(char in text for char in query) / len(query) for text in texts]
+
+    def warmup(self) -> None:
+        return None
+
+
 @pytest.fixture
 def token_counter() -> CharTokenCounter:
     return CharTokenCounter()

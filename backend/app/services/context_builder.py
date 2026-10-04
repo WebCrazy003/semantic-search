@@ -24,6 +24,11 @@ def estimate_tokens(text: str) -> int:
     return wide + (len(text) - wide) // 3 + 1
 
 
+def passage_key(text: str) -> str:
+    """Passage text with its spacing evened out, for telling repeats apart."""
+    return _WHITESPACE.sub(" ", text).strip()
+
+
 def build_sources(hits: list[SearchHit], max_passages: int, token_budget: int) -> list[Source]:
     """The best hits, numbered from 1, without repeats, within the token budget.
 
@@ -36,7 +41,7 @@ def build_sources(hits: list[SearchHit], max_passages: int, token_budget: int) -
     for hit in hits:
         if len(sources) >= max_passages:
             break
-        key = _WHITESPACE.sub(" ", hit.text).strip()
+        key = passage_key(hit.text)
         if not key or key in seen:
             continue
         cost = estimate_tokens(hit.text) + 40  # the tag and its attributes

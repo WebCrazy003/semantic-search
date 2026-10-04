@@ -92,9 +92,18 @@ class Settings(BaseSettings):
     llm_disable_thinking: bool = True
     # Passages an answer is written from, best first.
     rag_context_passages: int = Field(default=6, ge=1, le=20)
-    # Hits scoring below this are not handed to the model; with none left the answer
-    # is "not found". 0 sends every hit until a threshold is calibrated on the eval set.
-    rag_min_score: float = Field(default=0.0, ge=0, le=1)
+    # Reranks the search results before an answer is written from them. Loaded only when
+    # answers are on; a folder that is not there leaves answers in search order, as does
+    # an empty value. Fetch it with `scripts/download_model.py reranker`.
+    reranker_model_path: Path | None = Path("./models/bge-reranker-v2-m3")
+    # Results the reranker reads, best first, once they are on screen: about 1.5 s for
+    # ten on Apple Silicon, a fraction of that on an NVIDIA GPU.
+    rag_rerank_candidates: int = Field(default=10, ge=1, le=100)
+    # Reranked hits scoring below this are not handed to the model; with none left the
+    # answer is "not found" without asking it. Only applies when the reranker is on.
+    # On eval/answer_set.json answerable questions score at least 0.03 and off-topic
+    # ones about 0.001, so 0.005 cuts only what is plainly unrelated.
+    rag_min_score: float = Field(default=0.005, ge=0, le=1)
 
     # Storage
     manifest_path: Path = Path("./data/manifest.db")
@@ -131,7 +140,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("qdrant_path", "llm_model_path", mode="before")
+    @field_validator("qdrant_path", "llm_model_path", "reranker_model_path", mode="before")
     @classmethod
     def _blank_path_is_unset(cls, value: object) -> object:
         """An empty QDRANT_PATH in .env means "use the server", not "use the cwd"."""
@@ -139,7 +148,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("qdrant_path", "llm_model_path", mode="after")
+    @field_validator("qdrant_path", "llm_model_path", "reranker_model_path", mode="after")
     @classmethod
     def _resolve_optional(cls, value: Path | None) -> Path | None:
         if value is None:
@@ -154,6 +163,9 @@ class Settings(BaseSettings):
             raise ValueError("chunk_overlap_tokens must be < chunk_target_tokens")
         if self.chunk_min_tokens > self.chunk_target_tokens:
             raise ValueError("chunk_min_tokens must be <= chunk_target_tokens")
+        if self.rag_rerank_candidates < self.rag_context_passages:
+            # Only scored results are answered from, so fewer would starve the answer.
+            raise ValueError("rag_rerank_candidates must be >= rag_context_passages")
         return self
 
     @property

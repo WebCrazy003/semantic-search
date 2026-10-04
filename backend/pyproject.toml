@@ -49,6 +49,7 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 # Test fixtures embed CJK sample sentences that cannot be wrapped without changing them.
 "tests/*" = ["E501"]
+"eval/answer_corpus.py" = ["E501"]
 
 # PyPI's Windows torch is CPU-only, so on Windows torch comes from PyTorch's CUDA
 # index instead. cu128 is the oldest index with Blackwell (RTX 50) kernels, and it

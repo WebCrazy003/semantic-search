@@ -18,12 +18,13 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.logging_config import get_logger
-from app.models.response_models import SearchResponse
+from app.models.response_models import SearchHit, SearchResponse
 from app.services import answer_language
 from app.services.answer_language import AnswerLanguage
 from app.services.answer_model import AnswerModel, AnswerModelUnavailable
 from app.services.answer_prompt import SYSTEM_PROMPT, Source, build_messages
-from app.services.context_builder import build_sources, estimate_tokens
+from app.services.context_builder import build_sources, estimate_tokens, passage_key
+from app.services.reranker_service import Reranker
 
 logger = get_logger("answer")
 
@@ -59,6 +60,8 @@ class AnswerService:
     def __init__(
         self,
         model: AnswerModel | None,
+        reranker: Reranker | None = None,
+        rerank_candidates: int = 10,
         context_passages: int = 6,
         context_tokens: int = 8192,
         max_answer_tokens: int = 600,
@@ -67,6 +70,8 @@ class AnswerService:
         max_concurrent: int = 1,
     ) -> None:
         self._model = model
+        self._reranker = reranker
+        self._rerank_candidates = rerank_candidates
         self._context_passages = context_passages
         self._max_answer_tokens = max_answer_tokens
         self._temperature = temperature
@@ -92,18 +97,28 @@ class AnswerService:
     async def events(self, response: SearchResponse) -> AsyncIterator[Event]:
         yield "results", response.model_dump(mode="json")
 
-        hits = response.results
-        choice = answer_language.choose(response.query, hits[0].text if hits else None)
+        ranked = await self._rank(response)
+        choice = answer_language.choose(response.query, ranked[0][0].text if ranked else None)
         language = choice.language
-        relevant = [hit for hit in hits if hit.score >= self._min_score]
+        # Only the reranker's score means the same thing from one question to the next,
+        # so the threshold applies to reranked hits alone.
+        relevant = [hit for hit, score in ranked if score is None or score >= self._min_score]
+        relevance = {(hit.document_id, hit.chunk_index): score for hit, score in ranked}
         sources = build_sources(relevant, self._context_passages, self._source_budget)
         yield (
             "sources",
             {
                 "language": language,
                 "unsupported": choice.unsupported,
+                # The reranker's best score, even when the threshold kept nothing.
+                "top_relevance": ranked[0][1] if ranked else None,
                 "passages": [
-                    {"n": s.n, "document_id": s.document_id, "chunk_index": s.chunk_index}
+                    {
+                        "n": s.n,
+                        "document_id": s.document_id,
+                        "chunk_index": s.chunk_index,
+                        "relevance": relevance[(s.document_id, s.chunk_index)],
+                    }
                     for s in sources
                 ],
             },
@@ -150,6 +165,27 @@ class AnswerService:
             took,
         )
         yield "done", _done("answered", took, self.model_name, outcome.restarted)
+
+    async def _rank(self, response: SearchResponse) -> list[tuple[SearchHit, float | None]]:
+        """The results best first for answering, with the reranker's score for each.
+
+        Runs after the results were sent, so the list never waits for it. Only the first
+        rerank_candidates are kept: a hit the reranker did not score would slip past the
+        threshold. Without a reranker, or when it fails, the search order stands and
+        there are no scores; without an answer model there is nothing to rank for.
+        """
+        unranked: list[tuple[SearchHit, float | None]] = [(hit, None) for hit in response.results]
+        if self._reranker is None or self._model is None or not response.results:
+            return unranked
+        candidates = _distinct(response.results)[: self._rerank_candidates]
+        try:
+            scores = await asyncio.to_thread(
+                self._reranker.scores, response.query, [hit.text for hit in candidates]
+            )
+        except Exception:
+            logger.exception("reranking failed; answering from the search order")
+            return unranked
+        return sorted(zip(candidates, scores, strict=True), key=lambda pair: -pair[1])
 
     async def _generate(
         self,
@@ -205,6 +241,18 @@ class AnswerService:
 class _Outcome:
     wrote: bool = False
     restarted: bool = False
+
+
+def _distinct(hits: list[SearchHit]) -> list[SearchHit]:
+    """Hits whose text has not come up already, as the same file in two places gives."""
+    seen: set[str] = set()
+    kept = []
+    for hit in hits:
+        key = passage_key(hit.text)
+        if key not in seen:
+            seen.add(key)
+            kept.append(hit)
+    return kept
 
 
 def _ready_to_check(held: str) -> bool:

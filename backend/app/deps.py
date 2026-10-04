@@ -26,6 +26,7 @@ from app.services.indexing_service import IndexingService
 from app.services.manifest_service import ManifestService
 from app.services.pdf_service import PdfService
 from app.services.qdrant_service import QdrantService
+from app.services.reranker_service import BgeReranker, Reranker
 from app.services.search_service import SearchService
 from app.services.throttle import Throttles
 from app.services.tokenizer_service import BgeTokenizer, TokenCounter
@@ -105,7 +106,30 @@ def build_extractors(settings: Settings) -> ExtractorRegistry:
     return ExtractorRegistry(extractors)
 
 
-def build_answers(settings: Settings) -> AnswerService:
+def build_reranker(settings: Settings, device: str) -> Reranker | None:
+    """The reranker, when answers are on and it has been downloaded.
+
+    Only answers use it, so without a model to write them the 1 GB or more it takes
+    stays free. A missing folder is not fatal: answers then use the search order.
+    `device` is where the embedder ended up, so a GPU it had to give up on is not
+    tried a second time.
+    """
+    path = settings.reranker_model_path
+    if not settings.llm_url.strip() or path is None:
+        return None
+    if not path.exists():
+        logger.warning(
+            "no reranker at %s, so answers use the search order; "
+            "run scripts/download_model.py reranker to add it",
+            path,
+        )
+        return None
+    reranker = BgeReranker(path, device=device, batch_size=settings.rag_rerank_candidates)
+    reranker.warmup()
+    return reranker
+
+
+def build_answers(settings: Settings, reranker: Reranker | None = None) -> AnswerService:
     """The answer service, with a model only when LLM_URL points at one."""
     model = (
         OpenAICompatibleModel(
@@ -119,6 +143,8 @@ def build_answers(settings: Settings) -> AnswerService:
     )
     return AnswerService(
         model=model,
+        reranker=reranker,
+        rerank_candidates=settings.rag_rerank_candidates,
         context_passages=settings.rag_context_passages,
         context_tokens=settings.llm_context_tokens,
         max_answer_tokens=settings.llm_max_answer_tokens,
@@ -146,6 +172,7 @@ def build_container(settings: Settings) -> Container:
         vector_size=settings.vector_size,
         upsert_batch=settings.qdrant_upsert_batch,
     )
+    reranker = build_reranker(settings, embedder.device_info().device)
     manifest = ManifestService(settings.manifest_path)
     access = AccessStore(settings.access_db_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
@@ -176,7 +203,7 @@ def build_container(settings: Settings) -> Container:
             max_top_k=settings.max_top_k,
         ),
         access=access,
-        answers=build_answers(settings),
+        answers=build_answers(settings, reranker),
         throttles=Throttles(login_failures=settings.auth_login_max_failures),
         device_monitor=DeviceUsageMonitor(
             device=device.device if device else "cpu",

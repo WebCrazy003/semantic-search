@@ -402,15 +402,40 @@ Each phase ends in something that works and ships on its own.
 - [ ] Vitest coverage as listed in §3.2. Check in the browser at desktop and narrow
       widths, light and dark.
 
-### Phase 3 — Retrieval quality for answers
-- [ ] `bge-reranker-v2-m3` reranks the top 30 to the top 6–8 (download script +
-      offline packaging like BGE-M3). The result list shows reranked order.
-- [ ] Neighbouring-chunk expansion so a passage cut mid-procedure is answered whole.
-- [ ] Calibrate `rag_min_score` so off-topic questions get "not found" without an LLM call.
-- [ ] Extend `backend/eval/` with `answer_set.json`: question, expected source
-      (file + page), expected key facts, and some unanswerable questions, covering all
-      nine question × document language pairs (§3.3). Measure retrieval hit@k with and
-      without the reranker, citation correctness, answer language, and correct abstention.
+### Phase 3 — Retrieval quality for answers *(done 2026-10-04)*
+- [x] `bge-reranker-v2-m3` (`scripts/download_model.py reranker`, fp16 on a GPU).
+      *As built:* it reranks the **results already on screen** (first 10), after the
+      `results` event, inside the answer service. Reranking 30 hits before the results
+      took 5.3 s on the M1 (fp32) and held the list back; 10 in fp16 take ~1.4 s while the
+      user reads. The list keeps search order; the answer uses reranked order.
+- [ ] Neighbouring-chunk expansion. *Deferred:* on the M1, prompt length is most of the
+      wait (~200 tokens/s), and neighbours roughly double it. Revisit with GPU numbers.
+- [x] `rag_min_score` = 0.005 on the reranker score (it does not apply to search scores,
+      which do not separate: answerable min 0.583 vs unanswerable max 0.638).
+- [x] `backend/eval/answer_set.json` + `answer_corpus.py` + `run_answer_eval.py`:
+      three manuals (zh pump, ko compressor, en chiller), 10 answerable questions over
+      every question × document language direction, plus 5 unanswerable.
+
+**Results on the M1 (16 GB), `run_answer_eval.py`** (the Qwen3.5 runs reranked 30 hits
+before the results, fp32; the last run is the shipped setup, 10 after, fp16):
+
+| Run | Passed | Facts | Citations | Language | Abstained | Median total |
+|---|---|---|---|---|---|---|
+| Qwen3.5-4B, no reranker | 14/15 | 100% | 90% | 100% | 100% | 5.3 s |
+| Qwen3.5-4B + reranker | 14/15 | 100% | 100% | 100% | 80% | 7.6 s |
+| Qwen3.5-4B + reranker + min 0.005 | 15/15 | 100% | 100% | 100% | 100% | 4.1 s |
+| **Qwen3-4B-Instruct-2507 + reranker + min 0.005** | 14/15 | 100% | 100% | 100% | 80% | **3.6 s** |
+
+- The corpus is small, so retrieval was 100% in every run; the reranker's measured
+  value here is a relevance score that separates answerable (≥ 0.030) from
+  unanswerable (≤ 0.020; off-topic ≈ 0.000) questions. Its ranking value needs a
+  larger, harder set built from real documents.
+- The remaining Instruct-2507 "failure" is a correct "the weight is not stated" that
+  still attaches a citation, which the scorer counts as answering.
+- **Default model: Qwen3-4B-Instruct-2507** (Apache-2.0, 2.50 GB): ~20 tokens/s against
+  17.5, ~27% fewer prompt tokens for the same text, more consistent citations on the
+  longer prompts in the scratch benchmark. Both still leave the odd Chinese term
+  untranslated in Korean answers (e.g. "5滴").
 
 ### Phase 4 — Packaging
 - [ ] Dev launch config + README; `prepare-offline.bat`, `run.bat`, `stop.bat`,

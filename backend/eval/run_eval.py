@@ -22,9 +22,10 @@ from typing import Any
 
 from qdrant_client import QdrantClient
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.deps import build_extractors
 from app.models.request_models import SearchRequest
+from app.models.response_models import IndexStatusResponse
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.embedding_service import BgeEmbeddingService
 from app.services.indexing_service import IndexingService
@@ -131,6 +132,46 @@ def summarise(results: list[CaseResult]) -> Summary:
     )
 
 
+def build_models(settings: Settings) -> tuple[BgeTokenizer, BgeEmbeddingService]:
+    """The real tokenizer and embedder, as the backend loads them."""
+    tokenizer = BgeTokenizer(settings.bge_model_path)
+    embedder = BgeEmbeddingService(
+        model_path=settings.bge_model_path,
+        device=settings.embedding_device,
+        batch_size=settings.embedding_batch_size,
+        max_seq_length=settings.embedding_max_seq_length,
+        expected_dimension=settings.vector_size,
+    )
+    return tokenizer, embedder
+
+
+def index_corpus(
+    documents: Path,
+    qdrant: QdrantService,
+    config: ChunkConfig,
+    embedder: BgeEmbeddingService,
+    tokenizer: BgeTokenizer,
+) -> IndexStatusResponse:
+    """Index a corpus into `qdrant`, keeping the bookkeeping in a throwaway manifest."""
+    settings = get_settings()
+    with tempfile.TemporaryDirectory() as scratch:
+        manifest = ManifestService(Path(scratch) / "eval.db")
+        manifest.initialise()
+        indexer = IndexingService(
+            extractors=build_extractors(settings),
+            chunker=Chunker(tokenizer=tokenizer, config=config),
+            embedder=embedder,
+            qdrant=qdrant,
+            manifest=manifest,
+            default_directory=documents,
+        )
+        assert indexer.start(documents, force=True)
+        indexer.run(documents, force=True)
+        status = indexer.snapshot()
+        manifest.close()
+    return status
+
+
 def _run_preset(
     preset: str,
     documents: Path,
@@ -153,41 +194,27 @@ def _run_preset(
         client.delete_collection(collection)
     qdrant.ensure_collection()
 
-    with tempfile.TemporaryDirectory() as scratch:
-        manifest = ManifestService(Path(scratch) / "eval.db")
-        manifest.initialise()
-        indexer = IndexingService(
-            extractors=build_extractors(settings),
-            chunker=Chunker(tokenizer=tokenizer, config=PRESETS[preset]),
-            embedder=embedder,
-            qdrant=qdrant,
-            manifest=manifest,
-            default_directory=documents,
-        )
-        started = time.perf_counter()
-        assert indexer.start(documents, force=True)
-        indexer.run(documents, force=True)
-        status = indexer.snapshot()
-        index_seconds = time.perf_counter() - started
+    started = time.perf_counter()
+    status = index_corpus(documents, qdrant, PRESETS[preset], embedder, tokenizer)
+    index_seconds = time.perf_counter() - started
 
-        searcher = SearchService(
-            embedder=embedder, qdrant=qdrant, default_top_k=top_k, max_top_k=top_k
-        )
-        results: list[CaseResult] = []
-        for case in load_cases():
-            response = searcher.search(SearchRequest(query=case.query, top_k=top_k))
-            hits = [hit.model_dump() for hit in response.results]
-            results.append(evaluate_case(case, hits, top_k, response.took_ms))
+    searcher = SearchService(
+        embedder=embedder, qdrant=qdrant, default_top_k=top_k, max_top_k=top_k
+    )
+    results: list[CaseResult] = []
+    for case in load_cases():
+        response = searcher.search(SearchRequest(query=case.query, top_k=top_k))
+        hits = [hit.model_dump() for hit in response.results]
+        results.append(evaluate_case(case, hits, top_k, response.took_ms))
 
-        print(
-            f"\nPreset {preset}: target={PRESETS[preset].target_tokens} "
-            f"max={PRESETS[preset].max_tokens} overlap={PRESETS[preset].overlap_tokens}"
-        )
-        print(
-            f"  indexed {status.indexed_documents} documents into {status.total_chunks} "
-            f"passages in {index_seconds:.1f}s"
-        )
-        manifest.close()
+    print(
+        f"\nPreset {preset}: target={PRESETS[preset].target_tokens} "
+        f"max={PRESETS[preset].max_tokens} overlap={PRESETS[preset].overlap_tokens}"
+    )
+    print(
+        f"  indexed {status.indexed_documents} documents into {status.total_chunks} "
+        f"passages in {index_seconds:.1f}s"
+    )
 
     if not keep:
         client.delete_collection(collection)
@@ -228,14 +255,7 @@ def main() -> int:
     args = parser.parse_args()
 
     settings = get_settings()
-    tokenizer = BgeTokenizer(settings.bge_model_path)
-    embedder = BgeEmbeddingService(
-        model_path=settings.bge_model_path,
-        device=settings.embedding_device,
-        batch_size=settings.embedding_batch_size,
-        max_seq_length=settings.embedding_max_seq_length,
-        expected_dimension=settings.vector_size,
-    )
+    tokenizer, embedder = build_models(settings)
 
     with tempfile.TemporaryDirectory() as scratch:
         if args.documents is None:

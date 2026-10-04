@@ -33,7 +33,7 @@
       "runtimeExecutable": "llama-server",
       "runtimeArgs": [
         "-m",
-        "models/llm/Qwen3.5-4B-Q4_K_M.gguf",
+        "models/llm/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
         "--host",
         "127.0.0.1",
         "--port",
