@@ -1,4 +1,6 @@
 # backend/tests/test_search_service.py
+from dataclasses import replace
+
 import pytest
 from qdrant_client import QdrantClient
 
@@ -93,3 +95,31 @@ class TestSearch:
         assert hit.page_start >= 1
         assert hit.text
         assert 0.0 <= hit.score <= 1.0
+
+
+class TestHeadingOnlyPassages:
+    def test_a_passage_holding_only_its_heading_is_not_returned(self) -> None:
+        qdrant = QdrantService(
+            client=QdrantClient(location=":memory:"),
+            collection="pdf_passages",
+            vector_size=DIMENSION,
+        )
+        qdrant.ensure_collection()
+        embedder = FakeEmbeddingService(dimension=DIMENSION)
+        texts = ["结论", "结论\n\n组件可以复用。", "保修条款说明"]
+        chunks = [
+            replace(chunk("a" * 64, index, text), heading="结论" if index < 2 else None)
+            for index, text in enumerate(texts)
+        ]
+        chunks[0] = replace(chunks[0], kind="heading")
+        qdrant.upsert_chunks(
+            chunks, embedder.embed_documents(texts), make_meta("a" * 64, "manual.pdf")
+        )
+        service = SearchService(embedder=embedder, qdrant=qdrant, max_top_k=100)
+
+        response = service.search(SearchRequest(query="结论", top_k=2))
+
+        assert [hit.text for hit in response.results] == [
+            "结论\n\n组件可以复用。",
+            "保修条款说明",
+        ]

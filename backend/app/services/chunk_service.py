@@ -66,19 +66,31 @@ class Chunker:
             return self._pack(document.document_id, units, start_index=0)
 
         chunks: list[Chunk] = []
+        carried: list[_Unit] = []
         for page in document.pages:
-            chunks.extend(
-                self._pack(
-                    document.document_id, self._page_units(page), start_index=len(chunks)
-                )
-            )
+            heading = carried[-1].heading if carried else None
+            units = carried + self._page_units(page, heading)
+            # Headings that end a page introduce the next one's text. Packed here they
+            # would stand alone as a passage with nothing in it.
+            split = self._trailing_headings_start(units)
+            units, carried = units[:split], units[split:]
+            if units:
+                chunks.extend(self._pack(document.document_id, units, start_index=len(chunks)))
+        if carried:
+            chunks.extend(self._pack(document.document_id, carried, start_index=len(chunks)))
         return chunks
+
+    @staticmethod
+    def _trailing_headings_start(units: list[_Unit]) -> int:
+        start = len(units)
+        while start > 0 and units[start - 1].kind == "heading":
+            start -= 1
+        return start
 
     # ------------------------------------------------------------------ stream
 
-    def _page_units(self, page: ExtractedPage) -> list[_Unit]:
+    def _page_units(self, page: ExtractedPage, heading: str | None = None) -> list[_Unit]:
         units: list[_Unit] = []
-        heading: str | None = None
 
         for block in page.blocks:
             if block.kind == "heading":
@@ -143,7 +155,12 @@ class Chunker:
             )
             for piece in pieces:
                 starts_section = piece.kind in ("heading", "table")
-                if buffer and (starts_section or buffered + piece.tokens > config.max_tokens):
+                # A heading opens a section, so it joins what follows it: a title printed
+                # on two lines, or a heading over a table, stays with the content.
+                opens_section = starts_section and not all(
+                    queued.kind == "heading" for queued in buffer
+                )
+                if buffer and (opens_section or buffered + piece.tokens > config.max_tokens):
                     close(carry_overlap=not starts_section)
 
                 buffer.append(piece)

@@ -233,11 +233,16 @@ class QdrantService:
         filters: SearchFilters | None = None,
         scope: AccessScope | None = None,
     ) -> list[SearchHit]:
+        query_filter = self._build_filter(filters, scope) or models.Filter()
+        # A passage made only of headings scores well against its topic and shows the
+        # reader nothing. The chunker now keeps headings with their text, but indexes
+        # built before that hold hundreds of them.
+        query_filter.must_not = [_match("kind", "heading")]
         response = self._client.query_points(
             collection_name=self._collection,
             query=vector,
             limit=top_k,
-            query_filter=self._build_filter(filters, scope),
+            query_filter=query_filter,
             with_payload=True,
         )
         return [self._to_hit(point) for point in response.points]

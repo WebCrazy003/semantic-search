@@ -201,6 +201,55 @@ class TestHeadings:
         assert chunks[-1].text == "附录"
         assert chunks[-1].token_count < 10
 
+    def test_consecutive_headings_stay_with_the_text_that_follows(
+        self, chunker: Chunker
+    ) -> None:
+        # A title printed on two lines comes out of extraction as two headings.
+        document = make_document(
+            [[heading("如何定制组件"), heading("使用属性"), para("属性是传给元素的参数。")]]
+        )
+        chunks = chunker.chunk_document(document)
+        assert len(chunks) == 1
+        assert chunks[0].heading == "如何定制组件"
+        assert chunks[0].text == "如何定制组件\n\n使用属性\n\n属性是传给元素的参数。"
+
+    def test_a_heading_that_ends_a_page_joins_the_next_pages_text(
+        self, chunker: Chunker
+    ) -> None:
+        document = make_document(
+            [[para("甲乙丙丁戊己庚辛壬癸。" * 4), heading("结论")], [para("组件可以复用。")]]
+        )
+        chunks = chunker.chunk_document(document)
+        assert [chunk.text for chunk in chunks if chunk.text.startswith("结论")] == [
+            "结论\n\n组件可以复用。"
+        ]
+        last = chunks[-1]
+        assert (last.heading, last.page_start, last.page_end) == ("结论", 1, 2)
+
+    def test_the_carried_heading_labels_the_rest_of_the_next_page(
+        self, chunker: Chunker
+    ) -> None:
+        document = make_document(
+            [[heading("结论")], [para("甲乙丙丁戊己庚辛壬癸。" * 10)]]
+        )
+        chunks = chunker.chunk_document(document)
+        assert len(chunks) > 1
+        assert all(chunk.heading == "结论" for chunk in chunks)
+        assert all(chunk.chunk_index == index for index, chunk in enumerate(chunks))
+
+    def test_no_chunk_is_only_a_heading_when_text_follows(self, chunker: Chunker) -> None:
+        document = make_document(
+            [
+                [para("第一节的内容。"), heading("第二章"), heading("维护")],
+                [heading("2.1 周期"), para("每月检查一次。"), heading("附表")],
+                [table("| 项目 | 周期 |\n|---|---|\n| 滤网 | 每月 |")],
+            ]
+        )
+        chunks = chunker.chunk_document(document)
+        assert all(chunk.kind != "heading" for chunk in chunks)
+        assert chunks[-1].kind == "table"
+        assert chunks[-1].text.startswith("附表")
+
 
 class TestTables:
     def test_a_table_becomes_its_own_chunk(self, chunker: Chunker) -> None:
