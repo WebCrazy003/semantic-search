@@ -1,9 +1,9 @@
 # DocSage — find knowledge locally
 
-Semantic search over Chinese and Korean PDFs and Word (.docx) files, running
-entirely on one machine. No
-cloud API, no external search service, and no internet connection once the model is
-downloaded.
+Semantic search over Chinese and Korean PDFs and Word (.docx) files, with written
+answers to questions in English, Chinese or Korean, running entirely on one machine.
+No cloud API, no external search service, and no internet connection once the models
+are downloaded.
 
 ## How it works
 
@@ -21,6 +21,24 @@ downloaded.
   derived cache; `scripts/rebuild_manifest.py` regenerates it from Qdrant.
 - **Accounts** live in `data/access.db`: users, sessions, password reset requests and
   which documents are public. Nothing can rebuild it, so back it up.
+
+Answers (`POST /api/ask`) are retrieval-augmented generation on top of that search:
+
+    question -> the same search, same access scope -> results to the browser at once
+             -> bge-reranker-v2-m3 over the results on screen -> best 6 passages
+             -> local LLM (llama-server) -> answer streamed with [n] citations
+
+- **The answer is in the question's language**, decided in code from its script and
+  stated in the prompt; a first sentence in the wrong language is held back and the
+  answer restarted once. Fixed messages come from templates in all three languages.
+- **The reranker's score** separates answerable questions from unanswerable ones,
+  which the search score cannot; below `RAG_MIN_SCORE` the answer is "not found"
+  without asking the model.
+- **The model runs in its own process**, OpenAI-compatible, on `127.0.0.1`. Search
+  works the same whether it is there or not.
+
+See [the plan](docs/superpowers/plans/2026-10-04-natural-language-answers.md) for the
+design and the measurements behind it.
 
 ## Accounts and ownership
 
@@ -50,19 +68,29 @@ build a Windows release skip to
 [Windows: building an offline release](#windows-building-an-offline-release).
 
     cd backend && uv venv --python 3.12 && uv sync --all-groups && cd ..
-    uv run --directory backend python ../scripts/download_model.py
+    uv run --directory backend python ../scripts/download_model.py bge-m3 reranker llm
     npm --prefix frontend install
     cp .env.example .env
 
-From then on, no network is needed.
+`bge-m3` alone is enough for search; `reranker` (2.3 GB) and `llm` (2.5 GB) add written
+answers. Answers also need `llama-server` from [llama.cpp](https://github.com/ggml-org/llama.cpp)
+(`brew install llama.cpp` on macOS) and `LLM_URL` set in `.env`. From then on, no
+network is needed.
 
 ## Running
 
-Three processes:
+Three processes, and a fourth for written answers:
 
     docker compose up -d
     uv run --directory backend uvicorn app.main:app --host 127.0.0.1 --port 8000
     npm --prefix frontend run dev
+    llama-server -m models/llm/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+        --host 127.0.0.1 --port 8081 -c 8192 -ngl 99 -np 1 --no-webui
+
+Start `llama-server` before the backend; started after it, answers appear once the
+page next checks, within half a minute. Without it, with `LLM_URL` empty, or when search
+runs on the CPU (see `LLM_REQUIRE_GPU` in `.env.example`), the search page works exactly
+as before and shows no answer box.
 
 Then open http://127.0.0.1:5173, create the administrator account, and import PDF or
 Word files with **Add documents** on the Documents tab. Importing starts indexing by
@@ -179,9 +207,10 @@ request that changes something needs the header `X-DocSage: 1`.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/api/health` | Liveness (no login) |
-| GET | `/api/health/ready` | Qdrant, collection, model, point count |
+| GET | `/api/health/ready` | Qdrant, collection, model, point count, whether answers are available |
 | GET/POST | `/api/auth/...` | Status, setup, register, login, logout, password, reset requests |
 | POST | `/api/search` | Semantic search over what the caller may read |
+| POST | `/api/ask` | The same search, then a written answer, as server-sent events: `results`, `sources`, `delta`…, then `done` or `error` |
 | POST | `/api/index` | Start an indexing run (a user's covers only their uploads) |
 | GET | `/api/index/status` | Progress and failures of the current or last run |
 | GET | `/api/documents` | Documents the caller may read, with page and passage counts |
@@ -227,6 +256,19 @@ The fixture pages are short enough that all three presets produce nearly the sam
 passages, so this corpus cannot separate them. The default stays at preset B. Re-run
 the comparison against your own documents before changing the chunk settings.
 
+## Measuring answers
+
+    uv run --directory backend python -m eval.run_answer_eval --label my-run
+    uv run --directory backend python -m eval.run_answer_eval --no-rerank
+
+Needs BGE-M3, the reranker and a running `llama-server`. It indexes three generated
+manuals (Chinese, Korean, English) into an in-memory Qdrant and asks 15 questions
+across every question and document language, five of them unanswerable, scoring
+retrieval, citations, answer language, exact facts and refusals, and printing where
+the "not found" threshold can go. On an Apple M1 with the default settings, 2026-10-04:
+14 of 15 pass, with a median of 3.6 s per answer. The one failure is a correct "the
+weight is not stated" that still carries a citation.
+
 ## Serving the UI on the local network
 
 By default everything binds to `127.0.0.1` and nothing is reachable from the network.
@@ -258,13 +300,16 @@ once whether to allow incoming connections; that prompt is this server.
   so nothing is installed or fetched on the machine that runs it.
 - The frontend loads no webfonts and no CDN scripts.
 - Passage text is never logged unless `DEBUG_LOG_TEXT=true`.
-- Query text is never logged.
+- Query text is never logged, and neither is an answer: only counts and timings.
+- The answer model runs on this machine. `llama-server` is started on `127.0.0.1`, so
+  even with `run.bat lan` only the backend is reachable from the network.
 
 ## Out of scope for this version
 
 OCR for scanned PDFs, legacy `.doc`, `.odt` and `.rtf`, keyword and hybrid search,
-reranking, LLM answers, folder watching, PDF preview, email password reset, HTTPS, GPUs other than
-NVIDIA RTX. Image-only PDFs and encrypted files are reported as `unsupported` rather
+follow-up questions in a conversation, folder watching, PDF preview, email password
+reset, HTTPS, and for search, GPUs other than NVIDIA RTX and Apple Silicon. The Windows offline release does not bundle
+`llama-server` or the answer model yet. Image-only PDFs and encrypted files are reported as `unsupported` rather
 than failing the run.
 
 ## Troubleshooting
@@ -286,3 +331,7 @@ than failing the run.
 | Windows: anything else | `check.bat` in the release folder |
 | Windows: "already running" | `stop.bat`, then `run.bat` |
 | Embedded store errors about a lock | Two processes opened `qdrant_storage/`; stop the app first |
+| No answer box on the search page | `LLM_URL` is empty, `llama-server` is not running, search runs on the CPU, or answers are switched off (account menu → Appearance; admins also Settings → Search) |
+| Log: "answers are off: search runs on the CPU" | No usable GPU, `EMBEDDING_DEVICE=cpu`, or the GPU failed at load (the reason is in the log). An answer on a CPU takes about a minute; `LLM_REQUIRE_GPU=false` turns answers on anyway |
+| Log: "no reranker at ..." | `scripts/download_model.py reranker`; until then answers use the search order |
+| An answer is in the wrong language | Rare; it is checked and restarted once. Try `run_answer_eval.py` against the model you are using |

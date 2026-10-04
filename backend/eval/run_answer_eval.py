@@ -158,6 +158,8 @@ def run(args: argparse.Namespace) -> list[Result]:
             "llm_url": args.llm_url,
             "rag_min_score": args.min_score,
             "llm_timeout_seconds": 300,
+            # Measuring a CPU-only machine is the point of running it there.
+            "llm_require_gpu": False,
             "reranker_model_path": None if args.no_rerank else get_settings().reranker_model_path,
         }
     )
@@ -174,7 +176,8 @@ def run(args: argparse.Namespace) -> list[Result]:
         index_corpus(documents, qdrant, chunk_config_from(settings), embedder, tokenizer)
 
     search = SearchService(embedder=embedder, qdrant=qdrant)
-    answers = build_answers(settings, build_reranker(settings, embedder.device_info().device))
+    device = embedder.device_info().device
+    answers = build_answers(settings, device, build_reranker(settings, device))
     return asyncio.run(_run_cases(search, answers, args.top_k))
 
 

@@ -106,6 +106,14 @@ def build_extractors(settings: Settings) -> ExtractorRegistry:
     return ExtractorRegistry(extractors)
 
 
+def answers_enabled(settings: Settings, device: str) -> bool:
+    """Whether answers are on: a model server is set, and the machine has a GPU unless
+    LLM_REQUIRE_GPU says a CPU will do. `device` is where the embedder ended up."""
+    if not settings.llm_url.strip():
+        return False
+    return device != "cpu" or not settings.llm_require_gpu
+
+
 def build_reranker(settings: Settings, device: str) -> Reranker | None:
     """The reranker, when answers are on and it has been downloaded.
 
@@ -115,7 +123,7 @@ def build_reranker(settings: Settings, device: str) -> Reranker | None:
     tried a second time.
     """
     path = settings.reranker_model_path
-    if not settings.llm_url.strip() or path is None:
+    if not answers_enabled(settings, device) or path is None:
         return None
     if not path.exists():
         logger.warning(
@@ -129,8 +137,10 @@ def build_reranker(settings: Settings, device: str) -> Reranker | None:
     return reranker
 
 
-def build_answers(settings: Settings, reranker: Reranker | None = None) -> AnswerService:
-    """The answer service, with a model only when LLM_URL points at one."""
+def build_answers(
+    settings: Settings, device: str, reranker: Reranker | None = None
+) -> AnswerService:
+    """The answer service, with a model only when answers are on (answers_enabled)."""
     model = (
         OpenAICompatibleModel(
             base_url=settings.llm_url,
@@ -138,7 +148,7 @@ def build_answers(settings: Settings, reranker: Reranker | None = None) -> Answe
             timeout_seconds=settings.llm_timeout_seconds,
             disable_thinking=settings.llm_disable_thinking,
         )
-        if settings.llm_url.strip()
+        if answers_enabled(settings, device)
         else None
     )
     return AnswerService(
@@ -172,13 +182,19 @@ def build_container(settings: Settings) -> Container:
         vector_size=settings.vector_size,
         upsert_batch=settings.qdrant_upsert_batch,
     )
-    reranker = build_reranker(settings, embedder.device_info().device)
+    device = embedder.device_info()
+    where = device.device
+    if settings.llm_url.strip() and not answers_enabled(settings, where):
+        logger.warning(
+            "answers are off: search runs on the CPU (%s), and on a CPU an answer's first "
+            "word takes 30 to 60 s; set LLM_REQUIRE_GPU=false to turn them on anyway",
+            device.fallback_reason or f"EMBEDDING_DEVICE={settings.embedding_device}",
+        )
+    reranker = build_reranker(settings, where)
     manifest = ManifestService(settings.manifest_path)
     access = AccessStore(settings.access_db_path)
     chunker = Chunker(tokenizer=tokenizer, config=chunk_config_from(settings))
     extractors = build_extractors(settings)
-    describe = getattr(embedder, "device_info", None)
-    device = describe() if callable(describe) else None
     return Container(
         settings=settings,
         tokenizer=tokenizer,
@@ -203,12 +219,9 @@ def build_container(settings: Settings) -> Container:
             max_top_k=settings.max_top_k,
         ),
         access=access,
-        answers=build_answers(settings, reranker),
+        answers=build_answers(settings, where, reranker),
         throttles=Throttles(login_failures=settings.auth_login_max_failures),
-        device_monitor=DeviceUsageMonitor(
-            device=device.device if device else "cpu",
-            name=device.name if device else None,
-        ),
+        device_monitor=DeviceUsageMonitor(device=where, name=device.name),
     )
 
 

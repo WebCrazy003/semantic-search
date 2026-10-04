@@ -2,7 +2,8 @@
 
     download_model.py                  BAAI/bge-m3 into models/bge-m3 (search)
     download_model.py reranker         BAAI/bge-reranker-v2-m3 into models/bge-reranker-v2-m3
-    download_model.py bge-m3 reranker  both
+    download_model.py llm              the answer model, one GGUF file, into models/llm
+    download_model.py bge-m3 reranker llm   all three
 
 Everything after this runs offline. The ONNX exports and images in the repositories
 are skipped because sentence-transformers does not use them.
@@ -12,7 +13,9 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +53,26 @@ MODELS = {
 }
 
 
+# The model that writes answers: a single quantised file llama-server loads. Apache-2.0.
+LLM_REPO = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
+LLM_FILE = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+LLM_TARGET = REPO_ROOT / "models" / "llm"
+
+
+def download_llm() -> bool:
+    from huggingface_hub import hf_hub_download
+
+    LLM_TARGET.mkdir(parents=True, exist_ok=True)
+    print(f"downloading {LLM_REPO}/{LLM_FILE} into {LLM_TARGET} ...")
+    try:
+        path = Path(hf_hub_download(LLM_REPO, LLM_FILE, local_dir=str(LLM_TARGET)))
+    except Exception as exc:  # network, disk or hub errors all end the same way
+        print(f"FAIL  llm: {exc}")
+        return False
+    print(f"OK    llm ready at {path} ({path.stat().st_size / 1024**3:.2f} GB)")
+    return True
+
+
 def download(name: str, model: Model) -> bool:
     from huggingface_hub import snapshot_download
 
@@ -78,17 +101,24 @@ def download(name: str, model: Model) -> bool:
     return True
 
 
+# Every name the script accepts, and how to fetch it.
+DOWNLOADS: dict[str, Callable[[], bool]] = {
+    **{name: partial(download, name, model) for name, model in MODELS.items()},
+    "llm": download_llm,
+}
+
+
 def main(argv: list[str]) -> int:
     names = argv or ["bge-m3"]
-    unknown = [name for name in names if name not in MODELS]
+    unknown = [name for name in names if name not in DOWNLOADS]
     if unknown:
-        print(f"unknown model(s): {', '.join(unknown)}; choose from {', '.join(MODELS)}")
+        print(f"unknown model(s): {', '.join(unknown)}; choose from {', '.join(DOWNLOADS)}")
         return 2
 
     # This script is the one place allowed to reach the network.
     os.environ["HF_HUB_OFFLINE"] = "0"
     os.environ["TRANSFORMERS_OFFLINE"] = "0"
-    if not all([download(name, MODELS[name]) for name in names]):
+    if not all([DOWNLOADS[name]() for name in names]):
         return 1
     print("      you can now disconnect from the network")
     return 0

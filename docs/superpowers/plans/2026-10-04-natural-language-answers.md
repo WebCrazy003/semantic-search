@@ -438,10 +438,20 @@ before the results, fp32; the last run is the shipped setup, 10 after, fp16):
   untranslated in Korean answers (e.g. "5滴").
 
 ### Phase 4 — Packaging
-- [ ] Dev launch config + README; `prepare-offline.bat`, `run.bat`, `stop.bat`,
-      `check.bat`, `verify_install.py`, `verify_offline.py`.
-- [ ] Update `docs/user-spec.md` (§4 Search screen, §5 results, §8 privacy: "answers are
-      generated on this machine").
+- [x] Dev launch config (`.claude/launch.json`: `llm`, `backend`).
+- [ ] **On the Windows laptop:** `prepare-offline.bat` (llama.cpp Windows build, then
+      `download_model.py bge-m3 reranker llm`), `run.bat` / `stop.bat` / `check.bat`,
+      `verify_install.py`, `verify_offline.py`; the Vulkan vs CUDA comparison (Phase 0);
+      `run_answer_eval.py` on the RTX card; asking during a large indexing run.
+- [x] Update `docs/user-spec.md` (§1, §3, §4 Search screen, new §5a, §8 privacy, §10–§14)
+      and `README.md` (how answers work, setup, running, `/api/ask`, measuring answers,
+      troubleshooting). *(done 2026-10-04)*
+- [x] Answers off by default without a GPU: `LLM_REQUIRE_GPU=true` turns them off when the
+      embedder runs on the CPU (the backend cannot see llama-server's device);
+      `false` allows them, e.g. for llama-server on an AMD or Intel GPU via Vulkan.
+      *(done 2026-10-04)*
+- [x] `scripts/download_model.py llm` fetches the answer model, so `prepare-offline.bat`
+      can fetch all three models the same way. *(done 2026-10-04)*
 
 ### Phase 5 — Later, if wanted
 - [ ] Follow-up questions: keep the last few turns in the page; when there is history,

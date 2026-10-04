@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     llm_max_concurrent: int = Field(default=1, ge=1)
     # Asks hybrid models (Qwen3 and later) to skip thinking aloud before answering.
     llm_disable_thinking: bool = True
+    # Answers need a GPU: an NVIDIA card or Apple Silicon. On a CPU a 4B model reads
+    # the passages for 30 to 60 s before writing a word, so on a machine where search
+    # itself runs on the CPU answers stay off, including when EMBEDDING_DEVICE=cpu forces
+    # it there. Set false when llama-server has a GPU of its own that search cannot use,
+    # such as an AMD or Intel one through Vulkan.
+    llm_require_gpu: bool = True
     # Passages an answer is written from, best first.
     rag_context_passages: int = Field(default=6, ge=1, le=20)
     # Reranks the search results before an answer is written from them. Loaded only when
