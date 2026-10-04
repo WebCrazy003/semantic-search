@@ -153,45 +153,82 @@ describe('searching', () => {
   })
 })
 
+async function openResult(index: number) {
+  await userEvent.click((await screen.findAllByTestId('result-card'))[index])
+}
+
 describe('the detail panel', () => {
-  it('selects the first result automatically', async () => {
+  it('stays closed until a result is clicked', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
-    await waitFor(() => expect(screen.getAllByTestId('result-card')[0]).toHaveAttribute(
-      'aria-selected',
-      'true',
-    ))
+    const cards = await screen.findAllByTestId('result-card')
+    expect(cards.every((card) => card.getAttribute('aria-selected') === 'false')).toBe(true)
+    expect(screen.queryByRole('link', { name: /open in the pdf/i })).not.toBeInTheDocument()
+
+    await openResult(1)
+    expect(cards[1]).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('dialog')).toHaveTextContent('필터를 교체하기 전에')
   })
 
-  it('shows the whole passage and every field for the selected result', async () => {
+  it('shows page and relevance once each, and no developer fields by default', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
-    await userEvent.click((await screen.findAllByTestId('result-card'))[1])
-
-    expect(await screen.findByText('Passage number')).toBeInTheDocument()
-    expect(screen.getByText('#1')).toBeInTheDocument()
-    expect(screen.getByText('/documents/manual_ko.pdf')).toBeInTheDocument()
+    await openResult(0)
+    const panel = await screen.findByRole('dialog')
+    expect(within(panel).getAllByText('Page 12')).toHaveLength(1)
+    expect(within(panel).getAllByLabelText(/^relevance/i)).toHaveLength(1)
+    expect(within(panel).queryByText('Passage number')).not.toBeInTheDocument()
+    expect(within(panel).queryByText('/documents/manual_zh.pdf')).not.toBeInTheDocument()
   })
 
-  it('moves the selection with the arrow keys', async () => {
+  it('shows the developer fields in developer mode', async () => {
+    givenSettings({ developerMode: true })
+    vi.spyOn(api, 'search').mockResolvedValue(response)
+    renderWithProviders(<SearchPage />)
+    await searchFor('更换滤芯')
+    await openResult(1)
+    const panel = await screen.findByRole('dialog')
+    expect(within(panel).getByText('Passage number')).toBeInTheDocument()
+    expect(within(panel).getByText('#1')).toBeInTheDocument()
+    expect(within(panel).getByText('/documents/manual_ko.pdf')).toBeInTheDocument()
+  })
+
+  it('shows and highlights a passage that is only its heading', async () => {
+    const titleOnly = { ...response.results[0], text: '第一章 安全注意事项' }
+    vi.spyOn(api, 'search').mockResolvedValue({ ...response, query: '安全', results: [titleOnly] })
+    renderWithProviders(<SearchPage />)
+    await searchFor('安全')
+    await openResult(0)
+    const text = (await screen.findByRole('dialog')).querySelector('.detail-text')
+    expect(text).toHaveTextContent('第一章 安全注意事项')
+    expect(text?.querySelector('mark')).toHaveTextContent('安全')
+  })
+
+  it('moves between results with the arrow keys, and the open panel follows', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
     const cards = await screen.findAllByTestId('result-card')
     cards[0].focus()
     await userEvent.keyboard('{ArrowDown}')
+    expect(cards[1]).toHaveFocus()
+    expect(cards[1]).toHaveAttribute('aria-selected', 'false')
+
+    await userEvent.keyboard('{Enter}')
     await waitFor(() => expect(cards[1]).toHaveAttribute('aria-selected', 'true'))
+    cards[1].focus()
     await userEvent.keyboard('{ArrowUp}')
     await waitFor(() => expect(cards[0]).toHaveAttribute('aria-selected', 'true'))
   })
 
-  it('offers the way into the source document', async () => {
+  it('offers the way into the source document at the right page', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
-    expect(await screen.findByRole('link', { name: /open page 12 in the pdf/i })).toHaveAttribute(
+    await openResult(0)
+    expect(await screen.findByRole('link', { name: /open in the pdf/i })).toHaveAttribute(
       'href',
       '/api/documents/a/file#page=12',
     )
@@ -201,7 +238,8 @@ describe('the detail panel', () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
-    await screen.findAllByTestId('result-card')
+    await openResult(0)
+    await screen.findByRole('dialog')
     expect(screen.queryByRole('link', { name: /inspect passages/i })).not.toBeInTheDocument()
   })
 
@@ -210,6 +248,7 @@ describe('the detail panel', () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderWithProviders(<SearchPage />)
     await searchFor('更换滤芯')
+    await openResult(0)
     expect(await screen.findByRole('link', { name: /inspect passages/i })).toHaveAttribute(
       'href',
       '/admin?document=a&chunk=4&tab=passages',
@@ -233,6 +272,36 @@ describe('the result card', () => {
     await searchFor('更换滤芯')
     const card = (await screen.findAllByTestId('result-card'))[0]
     expect(card).toHaveStyle({ maxHeight: `${CARD_MAX_HEIGHT[6]}px` })
+  })
+
+  it('puts the passage first and keeps the score to a quiet label', async () => {
+    vi.spyOn(api, 'search').mockResolvedValue(response)
+    renderWithProviders(<SearchPage />)
+    await searchFor('更换滤芯')
+    const [strong] = await screen.findAllByTestId('result-card')
+    expect(strong).toHaveClass('relevance-strong')
+    expect(within(strong).getByText('Strong match')).toBeInTheDocument()
+    expect(within(strong).queryByRole('progressbar')).not.toBeInTheDocument()
+    expect(within(strong).queryByText('0.91')).not.toBeInTheDocument()
+  })
+
+  it('highlights the parts of a CJK query that appear in the passage', async () => {
+    vi.spyOn(api, 'search').mockResolvedValue({ ...response, query: '如何更换滤芯' })
+    renderWithProviders(<SearchPage />)
+    await searchFor('如何更换滤芯')
+    const [card] = await screen.findAllByTestId('result-card')
+    const marks = [...card.querySelectorAll('.result-text mark')].map((mark) => mark.textContent)
+    // 如何更换滤芯 never appears whole; its pieces do, side by side.
+    expect(marks).toEqual(expect.arrayContaining(['更换', '滤芯']))
+    expect(marks).not.toContain('如何')
+  })
+
+  it('keeps language and owner tags for developer mode', async () => {
+    vi.spyOn(api, 'search').mockResolvedValue(response)
+    renderWithProviders(<SearchPage />)
+    await searchFor('更换滤芯')
+    const [card] = await screen.findAllByTestId('result-card')
+    expect(within(card).queryByText('zh')).not.toBeInTheDocument()
   })
 
   it('no longer offers an inline Show more', async () => {

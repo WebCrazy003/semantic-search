@@ -1,6 +1,6 @@
 // frontend/src/pages/SearchPage.tsx
 import { PlusOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Drawer, Empty, Grid, Row, Select, Skeleton, Space, Typography } from 'antd'
+import { Alert, Button, Drawer, Empty, Grid, Select, Skeleton, Space, Typography } from 'antd'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../app/AuthContext'
@@ -10,11 +10,9 @@ import { ResultDetail } from '../components/ResultDetail'
 import { SearchBar } from '../components/SearchBar'
 import { listUsers } from '../services/api'
 import { LANGUAGES, TOP_K_CHOICES } from '../settings/settings'
-import { useSettings } from '../settings/SettingsContext'
 
 export function SearchPage() {
   const navigate = useNavigate()
-  const { settings } = useSettings()
   const screens = Grid.useBreakpoint()
   const listRef = useRef<HTMLDivElement>(null)
   const {
@@ -39,22 +37,24 @@ export function SearchPage() {
     }
   }, [isAdmin])
 
-  // Side by side once there is room for both; a drawer below that, or whenever the
-  // setting asks for one.
-  const sideBySide = settings.detailView === 'auto' && !!screens.xl
   const results = response?.results ?? []
 
-  /** ↑/↓ move the selection while the list has focus, as a listbox should. */
+  /**
+   * ↑/↓ move between results while the list has focus, as a listbox should. They move
+   * the panel along once it is open; until then Enter opens it.
+   */
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-    if (results.length === 0) return
+    const cards = [
+      ...(listRef.current?.querySelectorAll<HTMLElement>('[data-testid="result-card"]') ?? []),
+    ]
+    if (cards.length === 0) return
     event.preventDefault()
-    const current = results.findIndex((hit) => selected && keyOf(hit) === keyOf(selected))
+    const current = cards.findIndex((card) => card === document.activeElement)
     const step = event.key === 'ArrowDown' ? 1 : -1
-    const next = Math.min(results.length - 1, Math.max(0, (current === -1 ? 0 : current) + step))
-    select(results[next])
-    const cards = listRef.current?.querySelectorAll<HTMLElement>('[data-testid="result-card"]')
-    cards?.[next]?.focus()
+    const next = current === -1 ? 0 : Math.min(cards.length - 1, Math.max(0, current + step))
+    cards[next].focus()
+    if (selected) select(results[next])
   }
 
   const resultList = (
@@ -79,9 +79,9 @@ export function SearchPage() {
         {busy && !response ? (
           <>
             {[0, 1, 2].map((index) => (
-              <Card key={index} size="small" className="result-card">
+              <div key={index} className="result-card">
                 <Skeleton active paragraph={{ rows: 2 }} title={{ width: '40%' }} />
-              </Card>
+              </div>
             ))}
           </>
         ) : null}
@@ -199,35 +199,23 @@ export function SearchPage() {
 
       {error ? <Alert type="error" showIcon message={error} className="page-alert" /> : null}
 
-      {sideBySide ? (
-        <Row gutter={16} className="search-split">
-          <Col span={14}>{resultList}</Col>
-          <Col span={10}>
-            <Card className="detail-panel" size="small">
-              {/* Keyed on whether anything is selected, so the panel slides in once
-                  when it opens rather than replaying on every arrow-key move. */}
-              <ResultDetail
-                key={selected ? 'open' : 'empty'}
-                hit={selected}
-                query={response?.query}
-              />
-            </Card>
-          </Col>
-        </Row>
-      ) : (
-        <>
-          {resultList}
-          <Drawer
-            open={!!selected}
-            onClose={() => select(null)}
-            placement="left"
-            width={Math.min(520, typeof window === 'undefined' ? 520 : window.innerWidth * 0.9)}
-            title={selected?.filename}
-          >
-            <ResultDetail hit={selected} query={response?.query} />
-          </Drawer>
-        </>
-      )}
+      {resultList}
+
+      {/* A slide-in panel, like a search engine's preview: the list keeps its place
+          and stays clickable beside it on a wide window. */}
+      <Drawer
+        open={!!selected}
+        onClose={() => select(null)}
+        placement="right"
+        mask={!screens.xl}
+        size={Math.min(560, typeof window === 'undefined' ? 560 : window.innerWidth * 0.92)}
+        title={selected?.filename}
+        className="detail-drawer"
+      >
+        {selected ? (
+          <ResultDetail key={keyOf(selected)} hit={selected} query={response?.query} />
+        ) : null}
+      </Drawer>
     </div>
   )
 }

@@ -9,12 +9,27 @@
   --error: #ff4d4f;
   --overlap: rgba(250, 173, 20, 0.28);
   --surface-subtle: rgba(0, 0, 0, 0.02);
+  /* How close a result is: the highlight tint and the quiet dot beside its label. */
+  --relevance-strong: #52c41a;
+  --relevance-good: #faad14;
+  --relevance-weak: #bfbfbf;
+  --mark-strong: rgba(82, 196, 26, 0.26);
+  --mark-good: rgba(250, 173, 20, 0.28);
+  --mark-weak: rgba(0, 0, 0, 0.07);
+  --result-title: #1a0dab;
 }
 
 :root[data-theme='dark'] {
   --hero-lens: #141414;
   --overlap: rgba(250, 173, 20, 0.22);
   --surface-subtle: rgba(255, 255, 255, 0.04);
+  --relevance-strong: #49aa19;
+  --relevance-good: #d89614;
+  --relevance-weak: #595959;
+  --mark-strong: rgba(73, 170, 25, 0.32);
+  --mark-good: rgba(216, 150, 20, 0.32);
+  --mark-weak: rgba(255, 255, 255, 0.12);
+  --result-title: #8ab4f8;
 }
 
 body {
@@ -246,77 +261,136 @@ body {
 .search-controls {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   margin-bottom: 16px;
 }
 
-/* R3.1: the input is capped and centred rather than stretched across the window. */
+/* Like a web search page: one left-aligned column at reading width, the search bar on
+   the same edge as the results under it. */
+.search-controls,
+.result-meta,
+.result-list,
+.search-page .page-alert {
+  max-width: 720px;
+}
+
+/* R3.1: the input is capped rather than stretched across the window. */
 .search-bar {
   width: 100%;
-  max-width: 680px;
+  max-width: 720px;
 }
 
 .search-bar-inner {
   width: 100%;
 }
 
-.search-split {
-  align-items: flex-start;
-}
-
 .result-meta {
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .result-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;
 }
 
-/* R3.3: a bounded card, so three of them fit above the fold at 1280x800. */
+/* R3.3: bounded, so three results fit above the fold at 1280x800. No card chrome: the
+   text is the result. */
 .result-card {
   overflow: hidden;
   cursor: pointer;
+  padding: 10px 12px;
+  margin-inline: -12px;
+  border-radius: 8px;
+  transition: background-color 120ms ease;
+}
+
+.result-card:hover {
+  background: var(--surface-subtle);
+}
+
+.result-card:focus-visible {
+  outline: 2px solid var(--ant-color-primary, #1677ff);
+  outline-offset: -2px;
 }
 
 .result-card.selected {
-  border-color: var(--ant-color-primary, #1677ff);
-  box-shadow: 0 0 0 1px var(--ant-color-primary, #1677ff) inset;
+  background: var(--ant-color-primary-bg, rgba(22, 119, 255, 0.06));
 }
 
-.result-card-body {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.result-card-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.result-card-head {
+.result-source {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-}
-
-.result-file {
-  max-width: 50%;
-}
-
-.result-heading {
-  display: block;
   font-size: 12px;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.result-source-icon {
+  flex: none;
+}
+
+.result-file.ant-typography {
+  max-width: 50%;
+  font-size: 12px;
+  color: inherit;
+}
+
+.result-source-sep,
+.result-page {
+  flex: none;
+}
+
+.result-tag.ant-tag {
+  margin: 0;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.result-relevance {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  flex: none;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+}
+
+.relevance-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--relevance-weak);
+}
+
+.relevance-strong .relevance-dot {
+  background: var(--relevance-strong);
+}
+
+.relevance-good .relevance-dot {
+  background: var(--relevance-good);
+}
+
+.result-title {
+  margin-top: 2px;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--result-title);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-card:hover .result-title {
+  text-decoration: underline;
 }
 
 .result-text {
   margin: 4px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .result-text.clamp {
@@ -325,12 +399,21 @@ body {
   overflow: hidden;
 }
 
-.result-text mark,
-.detail-text mark {
-  background: var(--overlap);
+/* The highlight colour says how close the match is: green, amber, then grey. */
+.result-card mark,
+.result-detail mark {
+  background: var(--mark-weak);
   color: inherit;
   padding: 0 1px;
   border-radius: 2px;
+}
+
+.relevance-strong mark {
+  background: var(--mark-strong);
+}
+
+.relevance-good mark {
+  background: var(--mark-good);
 }
 
 .search-page-actions {
@@ -339,56 +422,33 @@ body {
   margin-bottom: 8px;
 }
 
-.detail-panel {
-  position: sticky;
-  top: 88px;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-/* The panel enters from its left edge when a result is chosen. */
-.detail-panel .result-detail {
-  animation: detail-in 220ms ease-out;
-}
-
-@keyframes detail-in {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-:root[data-motion='reduced'] .detail-panel .result-detail {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .detail-panel .result-detail {
-    animation: none;
-  }
-}
-
-.detail-empty {
-  padding-block: 32px;
-}
-
-.detail-file.ant-typography {
-  margin: 0 0 6px;
-  word-break: break-word;
+.detail-relevance {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+  opacity: 0.85;
 }
 
 .detail-heading {
   display: block;
-  margin-top: 12px;
+  margin-top: 16px;
+  font-size: 16px;
 }
 
 .detail-text {
-  margin: 12px 0;
-  line-height: 1.7;
+  margin: 12px 0 16px;
+  font-size: 14px;
+  line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -399,7 +459,7 @@ body {
 }
 
 .detail-fields {
-  margin-top: 12px;
+  margin-top: 20px;
 }
 
 /* --------------------------------------------------------------- documents */
@@ -535,11 +595,6 @@ body {
 
 .job-progress > * + * {
   margin-top: 12px;
-}
-
-.index-dir {
-  font-size: 12px;
-  word-break: break-all;
 }
 
 .index-failures {

@@ -1,10 +1,11 @@
 // frontend/src/components/ResultCard.tsx
-import { Card, Progress, Tag, Typography } from 'antd'
+import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons'
+import { Tag, Typography } from 'antd'
 import type { KeyboardEvent } from 'react'
 import type { SearchHit } from '../services/api'
 import { CARD_MAX_HEIGHT } from '../settings/settings'
 import { useSettings } from '../settings/SettingsContext'
-import { highlight, pageLabel, withoutRepeatedHeading } from './passage'
+import { RELEVANCE_LABEL, highlight, pageLabel, passageBody, relevanceBand } from './passage'
 
 interface Props {
   hit: SearchHit
@@ -14,14 +15,15 @@ interface Props {
 }
 
 /**
- * One result, at a bounded height so three cards fit above the fold (spec R3.3). The
- * card is deliberately not expandable: the full passage belongs in the detail panel,
- * where it does not push the next result off the screen.
+ * One result, laid out like a web search result: where it is, what section it is, and
+ * the passage itself. The score stays out of the way; the colour of the highlights and
+ * a quiet label carry how close the match is. The full passage belongs in the detail
+ * panel, so the item is bounded in height (spec R3.3) and never expands.
  */
 export function ResultCard({ hit, query, selected, onSelect }: Props) {
   const { settings } = useSettings()
-  const body = withoutRepeatedHeading(hit.text, hit.heading)
-  const score = Math.max(0, Math.min(1, hit.score))
+  const band = relevanceBand(hit.score)
+  const FileIcon = hit.file_type === 'docx' ? FileWordOutlined : FilePdfOutlined
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -31,10 +33,8 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
   }
 
   return (
-    <Card
-      size="small"
-      hoverable
-      className={`result-card${selected ? ' selected' : ''}`}
+    <div
+      className={`result-card relevance-${band}${selected ? ' selected' : ''}`}
       style={{ maxHeight: CARD_MAX_HEIGHT[settings.previewLines] }}
       role="option"
       aria-selected={selected}
@@ -43,41 +43,43 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
       onKeyDown={keyDown}
       data-testid="result-card"
     >
-      <div className="result-card-body">
-        <Progress
-          type="circle"
-          size={38}
-          percent={Math.round(score * 100)}
-          format={() => score.toFixed(2)}
-          strokeWidth={10}
-          aria-label={`Relevance ${score.toFixed(3)}, cosine similarity, higher is closer in meaning`}
-        />
-
-        <div className="result-card-main">
-          <div className="result-card-head">
-            <Typography.Text strong ellipsis={{ tooltip: hit.filepath }} className="result-file">
-              {hit.filename}
-            </Typography.Text>
-            <Tag className="result-page">{pageLabel(hit)}</Tag>
-            {hit.language ? <Tag>{hit.language}</Tag> : null}
-            {hit.visibility === 'public' ? <Tag color="blue">Public</Tag> : null}
-            {hit.owner_username ? <Tag>{hit.owner_username}</Tag> : null}
-          </div>
-
-          {hit.heading ? (
-            <Typography.Text type="secondary" ellipsis className="result-heading">
-              {hit.heading}
-            </Typography.Text>
-          ) : null}
-
-          <p
-            className="result-text clamp"
-            style={{ WebkitLineClamp: settings.previewLines }}
-          >
-            {highlight(body, query, settings.highlightTerms)}
-          </p>
-        </div>
+      <div className="result-source">
+        <FileIcon aria-hidden="true" className="result-source-icon" />
+        <Typography.Text ellipsis={{ tooltip: hit.filename }} className="result-file">
+          {hit.filename}
+        </Typography.Text>
+        <span className="result-source-sep" aria-hidden="true">
+          ·
+        </span>
+        <span className="result-page">{pageLabel(hit)}</span>
+        {hit.visibility === 'public' ? (
+          <Tag color="blue" bordered={false} className="result-tag">
+            Public
+          </Tag>
+        ) : null}
+        {settings.developerMode && hit.language ? (
+          <Tag bordered={false} className="result-tag">
+            {hit.language}
+          </Tag>
+        ) : null}
+        {settings.developerMode && hit.owner_username ? (
+          <Tag bordered={false} className="result-tag">
+            {hit.owner_username}
+          </Tag>
+        ) : null}
+        <span className="result-relevance" title={`Relevance ${hit.score.toFixed(3)}`}>
+          <span className="relevance-dot" aria-hidden="true" />
+          {RELEVANCE_LABEL[band]}
+        </span>
       </div>
-    </Card>
+
+      <div className="result-title">
+        {highlight(hit.heading || hit.filename, query, settings.highlightTerms)}
+      </div>
+
+      <p className="result-text clamp" style={{ WebkitLineClamp: settings.previewLines }}>
+        {highlight(passageBody(hit), query, settings.highlightTerms)}
+      </p>
+    </div>
   )
 }

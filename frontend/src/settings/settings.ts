@@ -5,7 +5,6 @@
 
 export type ThemeChoice = 'system' | 'light' | 'dark'
 export type Density = 'comfortable' | 'compact'
-export type DetailView = 'auto' | 'drawer'
 export type PreviewLines = 3 | 4 | 6
 
 export interface UiSettings {
@@ -15,10 +14,11 @@ export interface UiSettings {
   resultsPerSearch: number
   defaultLanguage: string
   previewLines: PreviewLines
-  detailView: DetailView
   highlightTerms: boolean
   animations: boolean
   showAdminLinks: boolean
+  /** Shows passage number, language, owner and file path on results. */
+  developerMode: boolean
 }
 
 export const ACCENTS: { value: string; label: string }[] = [
@@ -45,10 +45,10 @@ export const DEFAULT_SETTINGS: UiSettings = {
   resultsPerSearch: 10,
   defaultLanguage: '',
   previewLines: 3,
-  detailView: 'auto',
   highlightTerms: true,
   animations: true,
   showAdminLinks: false,
+  developerMode: false,
 }
 
 export const STORAGE_KEY = 'semantic-search.ui.v1'
@@ -58,7 +58,6 @@ export const CARD_MAX_HEIGHT: Record<PreviewLines, number> = { 3: 152, 4: 176, 6
 
 const THEMES: ThemeChoice[] = ['system', 'light', 'dark']
 const DENSITIES: Density[] = ['comfortable', 'compact']
-const DETAIL_VIEWS: DetailView[] = ['auto', 'drawer']
 const PREVIEW_LINES: PreviewLines[] = [3, 4, 6]
 
 function pick<T>(value: unknown, allowed: T[], fallback: T): T {
@@ -90,10 +89,10 @@ export function coerceSettings(raw: unknown): UiSettings {
       DEFAULT_SETTINGS.defaultLanguage,
     ),
     previewLines: pick(value.previewLines, PREVIEW_LINES, DEFAULT_SETTINGS.previewLines),
-    detailView: pick(value.detailView, DETAIL_VIEWS, DEFAULT_SETTINGS.detailView),
     highlightTerms: bool(value.highlightTerms, DEFAULT_SETTINGS.highlightTerms),
     animations: bool(value.animations, DEFAULT_SETTINGS.animations),
     showAdminLinks: bool(value.showAdminLinks, DEFAULT_SETTINGS.showAdminLinks),
+    developerMode: bool(value.developerMode, DEFAULT_SETTINGS.developerMode),
   }
 }
 

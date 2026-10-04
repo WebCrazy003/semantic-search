@@ -74,9 +74,8 @@ export function SearchProvider({ children }: { children: ReactNode }) {
           ...(visibility ? { visibility } : {}),
         })
         setResponse(result)
-        // A populated list beside an empty panel reads as broken, so the top hit is
-        // selected for the user.
-        setSelected(result.results[0] ?? null)
+        // The detail panel slides in when the reader picks a result, never by itself.
+        setSelected(null)
         setError(null)
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : 'Search failed')
