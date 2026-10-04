@@ -187,7 +187,8 @@ describe('a regular user', () => {
 
     const mine = (await screen.findByText('My documents')).closest('.ant-card') as HTMLElement
     const shared = screen.getByText('Public documents').closest('.ant-card') as HTMLElement
-    expect(within(mine).getByText('mine.pdf')).toBeInTheDocument()
+    // The cards render at once; their rows arrive with the document list.
+    expect(await within(mine).findByText('mine.pdf')).toBeInTheDocument()
     expect(within(shared).getByText('shared.pdf')).toBeInTheDocument()
     expect(within(shared).queryByRole('button', { name: /remove/i })).not.toBeInTheDocument()
     expect(screen.queryByText('Clear the index')).not.toBeInTheDocument()

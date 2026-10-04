@@ -1,29 +1,42 @@
 // frontend/src/components/JobProgress.tsx
-import { PlayCircleOutlined } from '@ant-design/icons'
-import { Alert, Button, Col, Progress, Row, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, Col, Progress, Row, Statistic, Typography, type ProgressProps } from 'antd'
 import type { IndexStatus } from '../services/api'
 import { CountUp } from './CountUp'
-import { DeviceStatus } from './DeviceStatus'
 import { DeviceUsageMeter } from './DeviceUsageMeter'
 
 interface Props {
   status: IndexStatus | null
-  busy: boolean
-  onIndex: () => void
 }
 
-const TONE: Record<string, string> = {
-  running: 'processing',
+const PROGRESS_STATUS: Record<IndexStatus['status'], ProgressProps['status']> = {
+  running: 'active',
   completed: 'success',
-  failed: 'error',
-  idle: 'default',
+  failed: 'exception',
+  idle: 'normal',
 }
 
-export function JobProgress({ status, busy, onIndex }: Props) {
-  const running = status?.status === 'running'
-  const total = status?.total_documents ?? 0
-  const processed = status?.processed_documents ?? 0
-  const withinFile = status?.current_file_progress ?? 0
+function counters(status: IndexStatus): { title: string; value: number; alarming?: boolean }[] {
+  return [
+    { title: 'Passages', value: status.total_chunks },
+    { title: 'Indexed', value: status.indexed_documents },
+    { title: 'Unchanged', value: status.skipped_documents },
+    { title: 'Unsupported', value: status.unsupported_documents },
+    { title: 'Failed', value: status.failed_documents, alarming: true },
+    { title: 'Removed', value: status.deleted_documents },
+  ]
+}
+
+/**
+ * One indexing run: live progress and device load while it runs, the outcome once it
+ * ends. Jobs start from importing files, so there is no start button here.
+ */
+export function JobProgress({ status }: Props) {
+  if (!status || status.status === 'idle') return null
+
+  const running = status.status === 'running'
+  const total = status.total_documents
+  const processed = status.processed_documents
+  const withinFile = status.current_file_progress
 
   // Counting the part-finished file makes the bar move while one long document is being
   // embedded, instead of standing still between whole files.
@@ -34,106 +47,56 @@ export function JobProgress({ status, busy, onIndex }: Props) {
 
   return (
     <div className="job-progress">
-      <Space wrap className="index-actions">
-        <Button
-          type="primary"
-          icon={<PlayCircleOutlined aria-hidden="true" />}
-          loading={running}
-          disabled={running || busy}
-          onClick={onIndex}
-        >
-          {running ? 'Indexing…' : 'Index documents'}
-        </Button>
-        {status && status.status !== 'idle' ? (
-          <Tag color={TONE[status.status] ?? 'default'}>{status.status}</Tag>
-        ) : null}
-        {status?.directory ? <code className="index-dir">{status.directory}</code> : null}
-      </Space>
+      <Progress
+        percent={running ? percent : 100}
+        status={PROGRESS_STATUS[status.status]}
+        format={() => (indeterminate ? 'scanning…' : running ? `${percent}%` : 'done')}
+        aria-label="Indexing progress"
+      />
 
-      {status && status.status !== 'idle' ? (
-        <>
-          <Progress
-            percent={running ? percent : 100}
-            status={
-              status.status === 'failed' ? 'exception' : running ? 'active' : 'success'
-            }
-            format={() => (indeterminate ? 'scanning…' : running ? `${percent}%` : 'done')}
-            aria-label="Indexing progress"
-          />
-
-          {/* Live while the job runs: the backend only samples the device then. */}
-          <DeviceUsageMeter usage={status.device} />
-
-          <Typography.Paragraph aria-live="polite" className="progress-text">
-            {running ? (
+      <Typography.Paragraph aria-live="polite" className="progress-text">
+        {running ? (
+          <>
+            <strong>
+              {processed} of {total || '?'} files checked
+            </strong>
+            {status.current_file ? (
               <>
-                <strong>
-                  {processed} of {total || '?'} files checked
-                </strong>
-                {status.current_file ? (
-                  <>
-                    {' — '}
-                    <span className="current-file">{status.current_file}</span>
-                  </>
-                ) : null}
-                {status.current_stage ? <em> ({status.current_stage})</em> : null}
+                {' — '}
+                <span className="current-file">{status.current_file}</span>
               </>
-            ) : (
-              <>
-                {status.status} — checked {total} file{total === 1 ? '' : 's'},{' '}
-                <strong>indexed {status.indexed_documents}</strong>
-                {status.skipped_documents > 0
-                  ? `, ${status.skipped_documents} already up to date`
-                  : ''}
-              </>
-            )}
-          </Typography.Paragraph>
+            ) : null}
+            {status.current_stage ? <em> ({status.current_stage})</em> : null}
+          </>
+        ) : (
+          <>
+            {status.status} — checked {total} file{total === 1 ? '' : 's'},{' '}
+            <strong>indexed {status.indexed_documents}</strong>
+            {status.skipped_documents > 0
+              ? `, ${status.skipped_documents} already up to date`
+              : ''}
+          </>
+        )}
+      </Typography.Paragraph>
 
-          <Row gutter={[16, 8]} className="index-counters">
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Passages"
-                valueRender={() => <CountUp value={status.total_chunks} />}
-              />
-            </Col>
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Indexed"
-                valueRender={() => <CountUp value={status.indexed_documents} />}
-              />
-            </Col>
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Unchanged"
-                valueRender={() => <CountUp value={status.skipped_documents} />}
-              />
-            </Col>
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Unsupported"
-                valueRender={() => <CountUp value={status.unsupported_documents} />}
-              />
-            </Col>
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Failed"
-                valueRender={() => <CountUp value={status.failed_documents} />}
-                valueStyle={status.failed_documents ? { color: 'var(--error)' } : undefined}
-              />
-            </Col>
-            <Col xs={8} md={4}>
-              <Statistic
-                title="Removed"
-                valueRender={() => <CountUp value={status.deleted_documents} />}
-              />
-            </Col>
-          </Row>
-        </>
+      {running ? (
+        // Live while the job runs: the backend only samples the device then.
+        <DeviceUsageMeter usage={status.device} />
       ) : (
-        <Typography.Text type="secondary">No job has run in this session yet.</Typography.Text>
+        <Row gutter={[16, 8]} className="index-counters">
+          {counters(status).map(({ title, value, alarming }) => (
+            <Col xs={8} md={4} key={title}>
+              <Statistic
+                title={title}
+                valueRender={() => <CountUp value={value} />}
+                valueStyle={alarming && value ? { color: 'var(--error)' } : undefined}
+              />
+            </Col>
+          ))}
+        </Row>
       )}
 
-      {status && status.failures.length > 0 ? (
+      {status.failures.length > 0 ? (
         <Alert
           type="warning"
           showIcon
@@ -152,8 +115,6 @@ export function JobProgress({ status, busy, onIndex }: Props) {
           }
         />
       ) : null}
-
-      {running ? null : <DeviceStatus />}
     </div>
   )
 }

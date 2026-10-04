@@ -65,8 +65,10 @@ Three processes:
     npm --prefix frontend run dev
 
 Then open http://127.0.0.1:5173, create the administrator account, and import PDF or
-Word files on the Documents tab. Files put in `documents/` by hand are indexed as the
-library when an admin presses **Index documents**.
+Word files with **Add documents** on the Documents tab. Importing starts indexing by
+itself. When an admin imports, the run covers the whole `documents/` folder, so files put
+there by hand are indexed as the library at the same time; a regular user's import
+indexes only their own uploads.
 
 ## Windows: building an offline release
 

@@ -1,5 +1,5 @@
 // frontend/src/hooks/useLibrary.ts
-// One owner for the library: the document list, the current run, and the job history.
+// One owner for the library: the document list and the current run.
 // It lives above the router, so navigating never throws the state away and every page
 // agrees about what is indexed.
 
@@ -8,7 +8,6 @@ import {
   clearIndex,
   getDocuments,
   getIndexStatus,
-  getJobs,
   removeDocument,
   setVisibilityInBulk,
   startIndexing,
@@ -16,7 +15,6 @@ import {
   type ClearResult,
   type DocumentSummary,
   type IndexStatus,
-  type JobSummary,
   type UploadResult,
   type Visibility,
 } from '../services/api'
@@ -32,13 +30,11 @@ export interface Library {
   /** False until the first refresh has settled, so "empty" is not confused with "not asked yet". */
   loaded: boolean
   status: IndexStatus | null
-  jobs: JobSummary[]
   error: string | null
   busy: boolean
   lastUpload: UploadResult | null
   lastClear: ClearResult | null
   refresh: () => Promise<void>
-  runIndexing: (force?: boolean) => Promise<void>
   importFiles: (files: File[]) => Promise<void>
   remove: (documentId: string) => Promise<void>
   clearAll: () => Promise<void>
@@ -54,24 +50,20 @@ function message(caught: unknown, fallback: string): string {
 export function useLibrary(): Library {
   const [documents, setDocuments] = useState<DocumentSummary[]>([])
   const [status, setStatus] = useState<IndexStatus | null>(null)
-  const [jobs, setJobs] = useState<JobSummary[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [lastUpload, setLastUpload] = useState<UploadResult | null>(null)
   const [lastClear, setLastClear] = useState<ClearResult | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  // Files saved while another run was going; they are indexed as soon as it ends.
+  const pendingUpload = useRef(false)
 
   const refresh = useCallback(async () => {
     try {
-      const [nextStatus, nextDocuments, nextJobs] = await Promise.all([
-        getIndexStatus(),
-        getDocuments(),
-        getJobs(),
-      ])
+      const [nextStatus, nextDocuments] = await Promise.all([getIndexStatus(), getDocuments()])
       setStatus(nextStatus)
       setDocuments(nextDocuments)
-      setJobs(nextJobs)
       setError(null)
     } catch (caught) {
       setError(message(caught, 'Could not reach the backend'))
@@ -89,27 +81,20 @@ export function useLibrary(): Library {
   }, [refresh, status?.status])
 
   useEffect(() => {
+    if (!pendingUpload.current || !status || status.status === 'running') return
+    pendingUpload.current = false
+    startIndexing({ trigger: 'upload' })
+      .then((started) => {
+        // Someone else got in first; try again when that run ends.
+        if (started.status === 'already_running') pendingUpload.current = true
+        return refresh()
+      })
+      .catch((caught: unknown) => setError(message(caught, 'Could not start indexing')))
+  }, [refresh, status])
+
+  useEffect(() => {
     void refresh()
   }, [refresh])
-
-  const runIndexing = useCallback(
-    async (force = false) => {
-      setBusy(true)
-      setLastClear(null)
-      try {
-        const started = await startIndexing({ force })
-        if (started.status === 'already_running') {
-          setError('An indexing job is already running. Only one runs at a time.')
-        }
-        await refresh()
-      } catch (caught) {
-        setError(message(caught, 'Could not start indexing'))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [refresh],
-  )
 
   const importFiles = useCallback(
     async (files: File[]) => {
@@ -124,8 +109,9 @@ export function useLibrary(): Library {
         if (result.saved.length > 0) {
           const started = await startIndexing({ trigger: 'upload' })
           if (started.status === 'already_running') {
+            pendingUpload.current = true
             setError(
-              'Your files are saved. Another indexing run is in progress; press Index when it ends.',
+              'Your files are saved. Another indexing run is in progress; they are indexed as soon as it ends.',
             )
           }
         }
@@ -189,13 +175,11 @@ export function useLibrary(): Library {
     documents,
     loaded,
     status,
-    jobs,
     error,
     busy,
     lastUpload,
     lastClear,
     refresh,
-    runIndexing,
     importFiles,
     remove,
     clearAll,

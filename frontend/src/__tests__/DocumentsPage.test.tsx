@@ -147,36 +147,65 @@ describe('adding documents', () => {
     expect(wrap).toHaveClass('no-motion')
   })
 
-  it('carries import, indexing and history, so nothing from the old tab is lost', async () => {
+  it('offers importing only: no folder indexing and no job history', async () => {
     renderWithProviders(<DocumentsPage />)
     await ready()
     await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
     const card = await screen.findByTestId('add-documents-card')
 
+    expect(within(card).getByText('Import & index files')).toBeInTheDocument()
     expect(within(card).getByText(/drop pdf or word files here/i)).toBeInTheDocument()
-    expect(within(card).getByRole('button', { name: /index documents/i })).toBeInTheDocument()
-    expect(within(card).getByText(/recent jobs/i)).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /index documents/i })).not.toBeInTheDocument()
+    expect(within(card).queryByText(/recent jobs/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/folder path/i)).not.toBeInTheDocument()
   })
 
-  it('no longer offers indexing a folder in place', async () => {
+  it('shows no job panel before a job starts, even if an earlier one finished', async () => {
+    givenLibrary({ status: 'completed', job_id: 'earlier' })
     renderWithProviders(<DocumentsPage />)
     await ready()
     await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
-    await screen.findByTestId('add-documents-card')
-
-    expect(screen.queryByLabelText(/folder path/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /add folder/i })).not.toBeInTheDocument()
+    const card = await screen.findByTestId('add-documents-card')
+    expect(within(card).queryByLabelText('Indexing progress')).not.toBeInTheDocument()
   })
 
-  it('starts an indexing job', async () => {
+  it('keeps showing a job that was running when the card opened, through to its outcome', async () => {
+    givenLibrary({ status: 'running', job_id: 'live', total_documents: 4, processed_documents: 1 })
+    renderWithProviders(<DocumentsPage />)
+    await ready()
+    await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
+    const card = await screen.findByTestId('add-documents-card')
+    expect(await within(card).findByText(/1 of 4 files checked/i)).toBeInTheDocument()
+
+    vi.spyOn(api, 'getIndexStatus').mockResolvedValue(
+      makeStatus({ status: 'completed', job_id: 'live', indexed_documents: 4 }),
+    )
+    expect(
+      await within(card).findByText('Indexing finished', undefined, { timeout: 2000 }),
+    ).toBeInTheDocument()
+  })
+
+  it('imports, then shows the job and its results once it is done', async () => {
+    givenLibrary({ status: 'completed', job_id: 'earlier' })
+    vi.spyOn(api, 'uploadDocuments').mockResolvedValue({ saved: ['new.pdf'], rejected: [], directory: '/documents/users/u' })
     const start = vi
       .spyOn(api, 'startIndexing')
       .mockResolvedValue({ status: 'started', directory: '/documents' })
     renderWithProviders(<DocumentsPage />)
     await ready()
     await userEvent.click(screen.getByRole('button', { name: /add documents/i }))
-    await userEvent.click(screen.getByRole('button', { name: /index documents/i }))
-    await waitFor(() => expect(start).toHaveBeenCalled())
+    const card = await screen.findByTestId('add-documents-card')
+
+    vi.spyOn(api, 'getIndexStatus').mockResolvedValue(
+      makeStatus({ status: 'completed', job_id: 'mine', indexed_documents: 1, total_chunks: 42 }),
+    )
+    const input = card.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['%PDF'], 'new.pdf', { type: 'application/pdf' }))
+    await userEvent.click(within(card).getByRole('button', { name: /import and index/i }))
+
+    await waitFor(() => expect(start).toHaveBeenCalledWith({ trigger: 'upload' }))
+    expect(await within(card).findByText('Indexing finished')).toBeInTheDocument()
+    expect(within(card).getByText('Passages')).toBeInTheDocument()
   })
 })
 
@@ -198,6 +227,9 @@ describe('while a job runs', () => {
     expect(await screen.findByText(/4 of 10 files checked/i)).toBeInTheDocument()
     expect(screen.getByText('manual_ko.pdf', { selector: '.current-file' })).toBeInTheDocument()
     expect(screen.getByText(/embedding/)).toBeInTheDocument()
+    // Device load while it runs; the results counters only once it is done.
+    expect(screen.getByLabelText('Indexing progress')).toBeInTheDocument()
+    expect(screen.queryByText('Unchanged')).not.toBeInTheDocument()
   })
 
   it('says the list is updating', async () => {

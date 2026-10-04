@@ -7,8 +7,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DocumentList } from '../components/DocumentList'
-import { JobHistory } from '../components/JobHistory'
-import { makeDocument, makeJob } from './fixtures'
+import { makeDocument } from './fixtures'
 import { renderWithProviders } from './helpers'
 
 const many = Array.from({ length: 23 }, (_, index) =>
@@ -54,16 +53,6 @@ describe('paging', () => {
     renderWithProviders(<DocumentList documents={many.slice(0, 4)} />)
     expect(rows()).toHaveLength(4)
     expect(screen.queryByTitle('2')).not.toBeInTheDocument()
-  })
-
-  it('pages the job history too', async () => {
-    const jobs = Array.from({ length: 12 }, (_, index) =>
-      makeJob({ job_id: `job-${index}`, chunks: index }),
-    )
-    renderWithProviders(<JobHistory jobs={jobs} />)
-    expect(rows()).toHaveLength(10)
-    await userEvent.click(screen.getByTitle('2'))
-    expect(rows()).toHaveLength(2)
   })
 })
 

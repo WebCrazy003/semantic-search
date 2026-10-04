@@ -43,7 +43,7 @@ After a search you see the number of results and how long the search took, then 
 
 Two lists: **My documents**, the files you added, and **Public documents**, the ones an administrator has shared with everyone. Each shows the filename, page count, number of searchable passages, detected language, and status. You can remove your own documents; public ones you can open and search, but not remove.
 
-An **Index documents** button indexes your files. While a run is going the screen updates itself, and when it finishes you see how many documents were newly indexed, skipped, or could not be read. Only one run happens at a time for everyone; if someone else's is going, yours starts when you press the button again after it ends.
+**Add documents** opens **Import & index files**: drop PDF or Word files in and they are copied into your own folder and indexed straight away, with no second button to press. While the run is going you see its progress and how hard the GPU or CPU is working; when it finishes you see how many documents were newly indexed, skipped, or could not be read. Only one run happens at a time for everyone; if someone else's is going, your files are saved and indexed as soon as it ends.
 
 Administrators see one list of every document, with its owner, and a switch on each to make it public or private.
 
@@ -99,7 +99,7 @@ Unreadable files never stop a scan. They appear on the Documents tab with their 
 
 ## 7. Keeping documents up to date
 
-Press **Index documents** whenever the folder changes. The tool works out what to do on its own:
+Every import starts an indexing run, and the run works out what to do on its own. A regular user's run covers their own uploads; an administrator's covers the whole documents folder, including files put there by hand:
 
 - A **new** file is indexed
 - An **unchanged** file is skipped, so repeat scans are fast
@@ -166,7 +166,7 @@ These are recognised gaps, not oversights. Each is a candidate for a later relea
 | Sent back to the login page | Your session ended: you were logged out elsewhere, or an administrator changed your account. Log in again. |
 | "Too many attempts" | Several wrong passwords in a row. Wait a few minutes. |
 | Nobody can log in as administrator | On the computer DocSage runs on: `scripts/reset_admin.py <username>` prints a new temporary password. |
-| No results for anything | Nothing is indexed yet. Press **Index documents**. |
+| No results for anything | Nothing is indexed yet. Import your files with **Add documents** on the Documents tab. |
 | A document shows "unsupported" | It is scanned or password-protected. Out of scope for this version. |
 | A document shows "failed" | The file is damaged. The reason is shown next to it. |
 | Results look unrelated | Check the Documents tab first: the document you expected may not be indexed. |

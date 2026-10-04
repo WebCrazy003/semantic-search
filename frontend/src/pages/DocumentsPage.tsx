@@ -127,8 +127,9 @@ export function DocumentsPage() {
       {isAdmin ? (
         <Card title="Clear the index" className="danger-card">
           <Typography.Paragraph type="secondary">
-            Removes every passage and every document record, for every user. Files, job history and
-            which documents are public are all kept, so indexing again brings everything back.
+            Removes every passage and every document record, for every user. The files and which
+            documents are public are kept: the next time an administrator imports a file, the run
+            covers the whole documents folder and brings everything back.
           </Typography.Paragraph>
           <Popconfirm
             title="Clear all indexing?"

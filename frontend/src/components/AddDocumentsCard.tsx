@@ -1,22 +1,27 @@
 // frontend/src/components/AddDocumentsCard.tsx
 import { CloseOutlined } from '@ant-design/icons'
-import { Button, Card, Collapse, Divider, Typography } from 'antd'
+import { Button, Card, Divider, Typography } from 'antd'
+import { useState } from 'react'
 import type { Library } from '../hooks/useLibrary'
 import { ImportPanel } from './ImportPanel'
-import { JobHistory } from './JobHistory'
 import { JobProgress } from './JobProgress'
 
 /**
- * The card that opens when the aggregation cards minimise: import files, start a job,
- * and watch it run. Files are imported into the documents folder rather than indexed
- * from wherever they sit, so there is one place documents live and one thing to scan.
+ * The card that opens when the aggregation cards minimise: import files, which starts
+ * the indexing job, then watch it run. Files are imported into the documents folder
+ * rather than indexed from wherever they sit, so there is one place documents live.
  */
 export function AddDocumentsCard({ library, onClose }: { library: Library; onClose: () => void }) {
   const running = library.status?.status === 'running'
+  // A job that had already finished when the card opened is not this card's to report;
+  // one still running then, or any started since, is, through to its outcome.
+  const [atOpen] = useState(() => ({ jobId: library.status?.job_id ?? null, running }))
+  const jobId = library.status?.job_id ?? null
+  const showJob = running || (jobId !== null && (jobId !== atOpen.jobId || atOpen.running))
 
   return (
     <Card
-      title="Add documents"
+      title="Import & index files"
       className="add-documents-card"
       data-testid="add-documents-card"
       extra={
@@ -29,7 +34,6 @@ export function AddDocumentsCard({ library, onClose }: { library: Library; onClo
         />
       }
     >
-      <Typography.Title level={5}>Import files</Typography.Title>
       <ImportPanel
         busy={library.busy}
         running={running}
@@ -37,23 +41,13 @@ export function AddDocumentsCard({ library, onClose }: { library: Library; onClo
         onImport={library.importFiles}
       />
 
-      <Divider />
-
-      <Typography.Title level={5}>Indexing</Typography.Title>
-      <JobProgress
-        status={library.status}
-        busy={library.busy}
-        onIndex={() => void library.runIndexing()}
-      />
-
-      <Collapse
-        ghost
-        size="small"
-        className="job-history"
-        items={[
-          { key: 'jobs', label: 'Recent jobs', children: <JobHistory jobs={library.jobs} /> },
-        ]}
-      />
+      {showJob ? (
+        <>
+          <Divider />
+          <Typography.Title level={5}>{running ? 'Indexing' : 'Indexing finished'}</Typography.Title>
+          <JobProgress status={library.status} />
+        </>
+      ) : null}
     </Card>
   )
 }
