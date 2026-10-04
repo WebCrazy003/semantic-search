@@ -51,6 +51,35 @@ export function givenSession(user: User | null, extra: Partial<api.AuthStatus> =
   )
 }
 
+/** What /api/health/ready says about answers. */
+export function givenAnswers(available: boolean) {
+  return vi.spyOn(api, 'fetchReadiness').mockResolvedValue({
+    status: 'ready',
+    model_loaded: true,
+    answers_available: available,
+    answer_model: available ? 'qwen3-4b' : null,
+  })
+}
+
+/**
+ * Replace /api/ask with a script that drives the handlers itself. `untilAborted` lets a
+ * script hold the stream open, as a model still writing does, until Stop or a new search.
+ */
+export function mockAsk(
+  script: (handlers: api.AskHandlers, signal: AbortSignal | undefined) => Promise<void> | void,
+) {
+  return vi.spyOn(api, 'ask').mockImplementation(async (_params, handlers, signal) => {
+    await script(handlers, signal)
+  })
+}
+
+export function untilAborted(signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (!signal || signal.aborted) return resolve()
+    signal.addEventListener('abort', () => resolve(), { once: true })
+  })
+}
+
 export const asUser = (user: User = USER) => givenSession(user)
 export const loggedOut = (extra: Partial<api.AuthStatus> = {}) => givenSession(null, extra)
 

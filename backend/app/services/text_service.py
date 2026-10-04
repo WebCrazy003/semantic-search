@@ -17,10 +17,10 @@ import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-_HAN = r"一-鿿㐀-䶿豈-﫿"
-_HANGUL = r"가-힣ㄱ-ㆎ"
+HAN_CHARS = r"一-鿿㐀-䶿豈-﫿"
+HANGUL_CHARS = r"가-힣ㄱ-ㆎ"
 # Han plus the full-width punctuation and brackets that behave like it for spacing.
-_WIDE = _HAN + r"　-〿！-｠"
+_WIDE = HAN_CHARS + r"　-〿！-｠"
 
 _ZERO_WIDTH = re.compile(r"[​-‏⁠﻿­]")
 _INLINE_SPACE = re.compile(r"[ \t 　  ]+")
@@ -29,8 +29,8 @@ _SPACE_BETWEEN_WIDE = re.compile(rf"(?<=[{_WIDE}]) +(?=[{_WIDE}])")
 
 _ENDS_WIDE = re.compile(rf"[{_WIDE}]$")
 _STARTS_WIDE = re.compile(rf"^[{_WIDE}]")
-_ENDS_HANGUL = re.compile(rf"[{_HANGUL}]$")
-_STARTS_HANGUL = re.compile(rf"^[{_HANGUL}]")
+_ENDS_HANGUL = re.compile(rf"[{HANGUL_CHARS}]$")
+_STARTS_HANGUL = re.compile(rf"^[{HANGUL_CHARS}]")
 _SOFT_HYPHEN = "\u00ad"
 # ASCII hyphen-minus, U+2010 hyphen, U+2011 non-breaking hyphen.
 _HYPHENS = "-\u2010\u2011"
@@ -45,12 +45,12 @@ _COMPOUND_HYPHEN_TAIL = re.compile(rf"[^\W_][{_HYPHENS}]\S*[^\W_][{_HYPHENS}]$")
 _CJK_TERMINATORS = "。！？；…．"
 _SENTENCE_BREAK = re.compile(
     rf"(?<=[{_CJK_TERMINATORS}])\s*"
-    rf"|(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9{_HAN}{_HANGUL}])"
+    rf"|(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9{HAN_CHARS}{HANGUL_CHARS}])"
     r"|\n+"
 )
 
-_HAN_RE = re.compile(f"[{_HAN}]")
-_HANGUL_RE = re.compile(f"[{_HANGUL}]")
+_HAN_RE = re.compile(f"[{HAN_CHARS}]")
+_HANGUL_RE = re.compile(f"[{HANGUL_CHARS}]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 
 _MIN_CHARS_FOR_LANGUAGE = 10

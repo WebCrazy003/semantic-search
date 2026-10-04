@@ -9,10 +9,11 @@ import {
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { Badge, Button, Dropdown, Modal, Tag, type MenuProps } from 'antd'
+import { Badge, Button, Dropdown, Form, Modal, Tag, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../app/AuthContext'
+import { AnswersSwitch } from './AnswersSwitch'
 import { AppearanceSettings } from './AppearanceSettings'
 
 export function AccountMenu() {
@@ -84,6 +85,10 @@ export function AccountMenu() {
         destroyOnHidden
       >
         <AppearanceSettings />
+        {/* Not appearance, but the only place a regular user can turn answers off. */}
+        <Form layout="horizontal" labelCol={{ span: 8 }} wrapperCol={{ span: 16 }} colon={false}>
+          <AnswersSwitch />
+        </Form>
       </Modal>
     </>
   )

@@ -1,7 +1,8 @@
 // frontend/src/components/ResultCard.tsx
 import { FilePdfOutlined, FileWordOutlined } from '@ant-design/icons'
 import { Tag, Typography } from 'antd'
-import type { KeyboardEvent } from 'react'
+import { memo, type KeyboardEvent } from 'react'
+import { keyOf } from '../app/resultKey'
 import type { SearchHit } from '../services/api'
 import { CARD_MAX_HEIGHT } from '../settings/settings'
 import { useSettings } from '../settings/SettingsContext'
@@ -11,7 +12,10 @@ interface Props {
   hit: SearchHit
   query?: string
   selected: boolean
-  onSelect: () => void
+  /** Stable across renders (the context's select), so memo can skip unchanged cards. */
+  onSelect: (hit: SearchHit) => void
+  /** The [n] the answer cites this result as, when it does. */
+  citation?: number
 }
 
 /**
@@ -20,7 +24,13 @@ interface Props {
  * a quiet label carry how close the match is. The full passage belongs in the detail
  * panel, so the item is bounded in height (spec R3.3) and never expands.
  */
-export function ResultCard({ hit, query, selected, onSelect }: Props) {
+export const ResultCard = memo(function ResultCard({
+  hit,
+  query,
+  selected,
+  onSelect,
+  citation,
+}: Props) {
   const { settings } = useSettings()
   const band = relevanceBand(hit.score)
   const FileIcon = hit.file_type === 'docx' ? FileWordOutlined : FilePdfOutlined
@@ -28,7 +38,7 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      onSelect()
+      onSelect(hit)
     }
   }
 
@@ -39,9 +49,10 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
       role="option"
       aria-selected={selected}
       tabIndex={0}
-      onClick={onSelect}
+      onClick={() => onSelect(hit)}
       onKeyDown={keyDown}
       data-testid="result-card"
+      data-result-key={keyOf(hit)}
     >
       <div className="result-source">
         <FileIcon aria-hidden="true" className="result-source-icon" />
@@ -74,6 +85,11 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
       </div>
 
       <div className="result-title">
+        {citation !== undefined ? (
+          <span className="result-cite" title={`Cited in the answer as [${citation}]`}>
+            [{citation}]
+          </span>
+        ) : null}
         {highlight(hit.heading || hit.filename, query, settings.highlightTerms)}
       </div>
 
@@ -82,4 +98,4 @@ export function ResultCard({ hit, query, selected, onSelect }: Props) {
       </p>
     </div>
   )
-}
+})

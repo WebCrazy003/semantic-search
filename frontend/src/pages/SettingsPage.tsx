@@ -3,6 +3,7 @@ import { ExperimentOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/ic
 import { Button, Card, Form, Popconfirm, Segmented, Select, Space, Switch, Tabs, Typography } from 'antd'
 import type { ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { AnswersSwitch } from '../components/AnswersSwitch'
 import { AppearanceSettings } from '../components/AppearanceSettings'
 import { DeviceStatus } from '../components/DeviceStatus'
 import { LANGUAGES, TOP_K_CHOICES, type PreviewLines } from '../settings/settings'
@@ -43,6 +44,8 @@ export function SettingsPage() {
   const search = (
     <Card className="settings-card">
       <Form {...FORM_LAYOUT}>
+        <AnswersSwitch />
+
         <Form.Item label="Results per search">
           <Select
             value={settings.resultsPerSearch}

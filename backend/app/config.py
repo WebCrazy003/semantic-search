@@ -75,6 +75,27 @@ class Settings(BaseSettings):
     default_top_k: int = Field(default=10, ge=1)
     max_top_k: int = Field(default=100, ge=1)
 
+    # Answers, written by a local language model from the passages a search finds.
+    # The model runs in its own process (llama-server, Ollama, LM Studio) on this
+    # machine. Empty LLM_URL turns answers off; search is unaffected either way.
+    llm_url: str = ""  # e.g. http://127.0.0.1:8081/v1
+    llm_model: str = "local"  # the model name the server expects, if it cares
+    # The GGUF file the launchers start llama-server with. The backend never reads it.
+    llm_model_path: Path | None = None
+    llm_context_tokens: int = Field(default=8192, ge=1024)
+    llm_max_answer_tokens: int = Field(default=600, ge=64)
+    llm_temperature: float = Field(default=0.2, ge=0, le=2)
+    llm_timeout_seconds: int = Field(default=120, ge=5)
+    # Answers written at once. Others wait their turn; their results do not.
+    llm_max_concurrent: int = Field(default=1, ge=1)
+    # Asks hybrid models (Qwen3 and later) to skip thinking aloud before answering.
+    llm_disable_thinking: bool = True
+    # Passages an answer is written from, best first.
+    rag_context_passages: int = Field(default=6, ge=1, le=20)
+    # Hits scoring below this are not handed to the model; with none left the answer
+    # is "not found". 0 sends every hit until a threshold is calibrated on the eval set.
+    rag_min_score: float = Field(default=0.0, ge=0, le=1)
+
     # Storage
     manifest_path: Path = Path("./data/manifest.db")
     # Accounts, sessions, reset requests and which documents are public. Unlike the
@@ -110,7 +131,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("qdrant_path", mode="before")
+    @field_validator("qdrant_path", "llm_model_path", mode="before")
     @classmethod
     def _blank_path_is_unset(cls, value: object) -> object:
         """An empty QDRANT_PATH in .env means "use the server", not "use the cwd"."""
@@ -118,7 +139,7 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("qdrant_path", mode="after")
+    @field_validator("qdrant_path", "llm_model_path", mode="after")
     @classmethod
     def _resolve_optional(cls, value: Path | None) -> Path | None:
         if value is None:

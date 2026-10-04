@@ -27,6 +27,9 @@ class ReadinessResponse(BaseModel):
     embedding_memory_gb: float | None = None
     # Why indexing is not on the GPU, when a GPU exists but could not be used.
     embedding_fallback_reason: str | None = None
+    # Whether /api/ask can write answers: a model is configured and its server answers.
+    answers_available: bool = False
+    answer_model: str | None = None
 
 
 class SearchHit(BaseModel):

@@ -19,6 +19,8 @@ export interface UiSettings {
   showAdminLinks: boolean
   /** Shows passage number, language, owner and file path on results. */
   developerMode: boolean
+  /** Writes a short answer above the results when the backend has an answer model. */
+  answersEnabled: boolean
 }
 
 export const ACCENTS: { value: string; label: string }[] = [
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: UiSettings = {
   animations: true,
   showAdminLinks: false,
   developerMode: false,
+  answersEnabled: true,
 }
 
 export const STORAGE_KEY = 'semantic-search.ui.v1'
@@ -93,6 +96,7 @@ export function coerceSettings(raw: unknown): UiSettings {
     animations: bool(value.animations, DEFAULT_SETTINGS.animations),
     showAdminLinks: bool(value.showAdminLinks, DEFAULT_SETTINGS.showAdminLinks),
     developerMode: bool(value.developerMode, DEFAULT_SETTINGS.developerMode),
+    answersEnabled: bool(value.answersEnabled, DEFAULT_SETTINGS.answersEnabled),
   }
 }
 

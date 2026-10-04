@@ -3,8 +3,10 @@ import { PlusOutlined } from '@ant-design/icons'
 import { Alert, Button, Drawer, Empty, Grid, Select, Skeleton, Space, Typography } from 'antd'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useCitedResults } from '../app/AnswerContext'
 import { useAuth } from '../app/AuthContext'
 import { keyOf, useSearchContext } from '../app/SearchContext'
+import { AnswerPanel } from '../components/AnswerPanel'
 import { ResultCard } from '../components/ResultCard'
 import { ResultDetail } from '../components/ResultDetail'
 import { SearchBar } from '../components/SearchBar'
@@ -38,6 +40,10 @@ export function SearchPage() {
   }, [isAdmin])
 
   const results = response?.results ?? []
+
+  // Which results the answer cites, for their [n] badge. Changes only when the answer
+  // cites something new, not with every streamed word.
+  const citations = useCitedResults()
 
   /**
    * ↑/↓ move between results while the list has focus, as a listbox should. They move
@@ -89,7 +95,7 @@ export function SearchPage() {
         {!busy && !response ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="Search your indexed PDF and Word files in Chinese, Korean, or English."
+            description="Ask a question or search your PDF and Word files in Chinese, Korean, or English."
           />
         ) : null}
 
@@ -106,7 +112,8 @@ export function SearchPage() {
             hit={hit}
             query={response?.query}
             selected={!!selected && keyOf(selected) === keyOf(hit)}
-            onSelect={() => select(hit)}
+            onSelect={select}
+            citation={citations.get(keyOf(hit))}
           />
         ))}
       </div>
@@ -198,6 +205,9 @@ export function SearchPage() {
       </div>
 
       {error ? <Alert type="error" showIcon message={error} className="page-alert" /> : null}
+
+      {/* Above the results, which stay where they are below it. */}
+      <AnswerPanel />
 
       {resultList}
 

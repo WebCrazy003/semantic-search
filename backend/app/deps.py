@@ -15,6 +15,8 @@ from qdrant_client import QdrantClient
 from app.config import Settings
 from app.logging_config import get_logger
 from app.services.access_store import AccessStore
+from app.services.answer_model import OpenAICompatibleModel
+from app.services.answer_service import AnswerService
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.device_usage import DeviceUsageMonitor
 from app.services.docx_service import DocxService
@@ -47,6 +49,9 @@ class Container:
     # simply reports no usage.
     device_monitor: DeviceUsageMonitor | None = None
     throttles: Throttles = field(default_factory=lambda: Throttles(login_failures=5))
+    # Without a model configured this still exists and answers "unavailable", so the
+    # routes need no special case.
+    answers: AnswerService = field(default_factory=lambda: AnswerService(model=None))
 
     def close(self) -> None:
         self.manifest.close()
@@ -100,6 +105,29 @@ def build_extractors(settings: Settings) -> ExtractorRegistry:
     return ExtractorRegistry(extractors)
 
 
+def build_answers(settings: Settings) -> AnswerService:
+    """The answer service, with a model only when LLM_URL points at one."""
+    model = (
+        OpenAICompatibleModel(
+            base_url=settings.llm_url,
+            model=settings.llm_model,
+            timeout_seconds=settings.llm_timeout_seconds,
+            disable_thinking=settings.llm_disable_thinking,
+        )
+        if settings.llm_url.strip()
+        else None
+    )
+    return AnswerService(
+        model=model,
+        context_passages=settings.rag_context_passages,
+        context_tokens=settings.llm_context_tokens,
+        max_answer_tokens=settings.llm_max_answer_tokens,
+        temperature=settings.llm_temperature,
+        min_score=settings.rag_min_score,
+        max_concurrent=settings.llm_max_concurrent,
+    )
+
+
 def build_container(settings: Settings) -> Container:
     """Load the model and open the stores. Called once, from the lifespan handler."""
     tokenizer = BgeTokenizer(settings.bge_model_path)
@@ -148,6 +176,7 @@ def build_container(settings: Settings) -> Container:
             max_top_k=settings.max_top_k,
         ),
         access=access,
+        answers=build_answers(settings),
         throttles=Throttles(login_failures=settings.auth_login_max_failures),
         device_monitor=DeviceUsageMonitor(
             device=device.device if device else "cpu",

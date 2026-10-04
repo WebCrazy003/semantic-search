@@ -47,4 +47,6 @@ def ready(
         embedding_batch_size=device.batch_size if device else None,
         embedding_memory_gb=device.memory_gb if device else None,
         embedding_fallback_reason=device.fallback_reason if device else None,
+        answers_available=container.answers.available(),
+        answer_model=container.answers.model_name,
     )

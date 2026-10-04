@@ -57,6 +57,7 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         try:
             yield
         finally:
+            await built.answers.aclose()
             built.close()
             logger.info("shut down")
 

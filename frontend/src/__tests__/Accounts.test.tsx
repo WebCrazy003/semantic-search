@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RESET_STORAGE_KEY } from '../pages/ForgotPasswordPage'
 import * as api from '../services/api'
+import { STORAGE_KEY } from '../settings/settings'
 import { makeDocument, makeStatus } from './fixtures'
 import { ADMIN, USER, asUser, givenSession, loggedOut, renderApp } from './helpers'
 
@@ -169,6 +170,20 @@ describe('a regular user', () => {
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByText('Dark'))
     await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'))
+  })
+
+  it('can turn answers off from the account menu', async () => {
+    asUser()
+    renderApp('/search')
+    await userEvent.click(await screen.findByRole('button', { name: 'Account: kim' }))
+    await userEvent.click(await screen.findByText('Appearance'))
+    const dialog = await screen.findByRole('dialog')
+    const toggle = within(dialog).getByLabelText('Answer questions with AI')
+    expect(toggle).toBeChecked()
+    await userEvent.click(toggle)
+    await waitFor(() =>
+      expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}').answersEnabled).toBe(false),
+    )
   })
 
   it('sees their own documents apart from public ones, and cannot remove public ones', async () => {

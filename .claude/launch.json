@@ -4,8 +4,49 @@
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "--directory",
+        "backend",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "llm",
+      "runtimeExecutable": "llama-server",
+      "runtimeArgs": [
+        "-m",
+        "models/llm/Qwen3.5-4B-Q4_K_M.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8081",
+        "-c",
+        "8192",
+        "-ngl",
+        "99",
+        "-np",
+        "1",
+        "--no-webui"
+      ],
+      "port": 8081
     }
   ]
 }

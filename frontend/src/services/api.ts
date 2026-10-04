@@ -180,6 +180,9 @@ export interface Readiness {
   embedding_batch_size?: number | null
   embedding_memory_gb?: number | null
   embedding_fallback_reason?: string | null
+  /** Whether POST /api/ask can write answers. Missing on an older backend: treat as false. */
+  answers_available?: boolean
+  answer_model?: string | null
 }
 
 export type SearchScope = 'all' | 'mine' | 'public'
@@ -224,7 +227,9 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
   let response: Response
   try {
     response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
-  } catch {
+  } catch (caught) {
+    // A cancelled request is the caller's own doing, not a backend that is down.
+    if (isAbort(caught)) throw caught
     // The offline story means a failed fetch almost always means the backend is down.
     throw new Error(OFFLINE)
   }
@@ -244,42 +249,263 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
   return response
 }
 
+function isAbort(caught: unknown): boolean {
+  return (
+    typeof caught === 'object' &&
+    caught !== null &&
+    (caught as { name?: unknown }).name === 'AbortError'
+  )
+}
+
+/** The backend's `detail`, or a generic line when the body has none. */
+function failure(body: unknown, status: number): Error {
+  return new Error(
+    body && typeof body === 'object' && 'detail' in body
+      ? String((body as { detail: unknown }).detail)
+      : `Request failed with status ${status}`,
+  )
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await send(path, init)
   if (response.status === 204) return undefined as T
 
   const body = await response.json().catch(() => null)
-  if (!response.ok) {
-    const detail =
-      body && typeof body === 'object' && 'detail' in body
-        ? String((body as { detail: unknown }).detail)
-        : `Request failed with status ${response.status}`
-    throw new Error(detail)
-  }
+  if (!response.ok) throw failure(body, response.status)
   return body as T
 }
 
-export async function fetchReadiness(): Promise<Readiness> {
-  return call<Readiness>('/api/health/ready')
+let readinessInFlight: Promise<Readiness> | null = null
+
+/**
+ * Callers that ask at the same moment (the search page's answer check and the device
+ * line, both on load) share one request. A later call asks again.
+ */
+export function fetchReadiness(): Promise<Readiness> {
+  if (!readinessInFlight) {
+    readinessInFlight = call<Readiness>('/api/health/ready').finally(() => {
+      readinessInFlight = null
+    })
+  }
+  return readinessInFlight
 }
 
-export async function search(params: SearchParams): Promise<SearchResponse> {
+/** The JSON body of /api/search, which /api/ask takes unchanged. */
+function searchBody(params: SearchParams): string {
   const filters: Record<string, string> = {}
   if (params.language) filters.language = params.language
   if (params.documentId) filters.document_id = params.documentId
   if (params.ownerId) filters.owner_id = params.ownerId
   if (params.visibility) filters.visibility = params.visibility
 
+  return JSON.stringify({
+    query: params.query,
+    top_k: params.topK,
+    ...(params.scope && params.scope !== 'all' ? { scope: params.scope } : {}),
+    ...(Object.keys(filters).length > 0 ? { filters } : {}),
+  })
+}
+
+export async function search(params: SearchParams): Promise<SearchResponse> {
   return call<SearchResponse>('/api/search', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({
-      query: params.query,
-      top_k: params.topK,
-      ...(params.scope && params.scope !== 'all' ? { scope: params.scope } : {}),
-      ...(Object.keys(filters).length > 0 ? { filters } : {}),
-    }),
+    body: searchBody(params),
   })
+}
+
+// ------------------------------------------------------------------ answers
+
+/** The language the answer is written in, decided by the backend from the question. */
+export type AnswerLanguage = 'en' | 'zh-Hans' | 'zh-Hant' | 'ko'
+
+export interface AskSource {
+  /** The number the answer cites as [n]. */
+  n: number
+  document_id: string
+  chunk_index: number
+}
+
+export interface AskSources {
+  language: AnswerLanguage
+  /** The question was in another language, so the answer is in English. */
+  unsupported: boolean
+  passages: AskSource[]
+}
+
+export interface AskDone {
+  status: 'answered' | 'not_found'
+  answer_ms: number
+  model: string
+  restarted: boolean
+}
+
+export interface AskError {
+  code: 'unavailable' | 'failed'
+  message: string
+}
+
+export interface AskHandlers {
+  /** First, about as fast as /api/search: the result list. */
+  onResults: (response: SearchResponse) => void
+  onSources: (sources: AskSources) => void
+  onDelta: (text: string) => void
+  onDone: (done: AskDone) => void
+  onError: (error: AskError) => void
+}
+
+export const ANSWER_STOPPED = 'The answer stopped unexpectedly.'
+
+/**
+ * POST /api/ask and read its Server-Sent Events. EventSource cannot POST, so the stream
+ * is read from the response body here.
+ *
+ * Until `results` has arrived, any failure (offline, an old backend's 404, a 503, an
+ * `error` event) rejects, so the caller can fall back to a plain search. After it,
+ * failures go to `onError` and the promise resolves. A cancelled request resolves
+ * quietly at any point and calls nothing further.
+ */
+export async function ask(
+  params: SearchParams,
+  handlers: AskHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  let response: Response
+  try {
+    response = await send('/api/ask', {
+      method: 'POST',
+      headers: { ...JSON_HEADERS, accept: 'text/event-stream' },
+      body: searchBody(params),
+      signal,
+    })
+  } catch (caught) {
+    if (isAbort(caught) || signal?.aborted) return
+    throw caught
+  }
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    if (signal?.aborted) return
+    throw failure(body, response.status)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('The answer could not be read.')
+
+  // Some streams only end a pending read on abort if they are cancelled.
+  const cancel = () => void reader.cancel().catch(() => undefined)
+  signal?.addEventListener('abort', cancel, { once: true })
+
+  let seenResults = false
+  let finished = false
+
+  /** Returns true once the stream has said its last word. */
+  function dispatch(block: string): boolean {
+    let event = 'message'
+    const data: string[] = []
+    for (const line of block.split('\n')) {
+      if (!line || line.startsWith(':')) continue
+      const colon = line.indexOf(':')
+      const field = colon === -1 ? line : line.slice(0, colon)
+      let value = colon === -1 ? '' : line.slice(colon + 1)
+      if (value.startsWith(' ')) value = value.slice(1)
+      if (field === 'event') event = value
+      else if (field === 'data') data.push(value)
+    }
+    if (data.length === 0) return false
+
+    let payload: unknown
+    try {
+      payload = JSON.parse(data.join('\n'))
+    } catch {
+      return false
+    }
+
+    switch (event) {
+      case 'results':
+        seenResults = true
+        handlers.onResults(payload as SearchResponse)
+        return false
+      case 'sources':
+        handlers.onSources(payload as AskSources)
+        return false
+      case 'delta': {
+        const text = (payload as { text?: unknown }).text
+        if (typeof text === 'string' && text) handlers.onDelta(text)
+        return false
+      }
+      case 'done':
+        handlers.onDone(payload as AskDone)
+        return true
+      case 'error': {
+        const error = payload as Partial<AskError>
+        const message = typeof error.message === 'string' ? error.message : ANSWER_STOPPED
+        // Without results there is nothing to keep: let the caller fall back.
+        if (!seenResults) throw new Error(message)
+        handlers.onError({ code: error.code === 'unavailable' ? 'unavailable' : 'failed', message })
+        return true
+      }
+      default:
+        return false
+    }
+  }
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  /** Appends text, normalising CR and CRLF to LF. A CR at the very end may be half a CRLF. */
+  function append(text: string, last: boolean) {
+    let combined = buffer + text
+    const heldCr = !last && combined.endsWith('\r')
+    if (heldCr) combined = combined.slice(0, -1)
+    buffer = combined.replace(/\r\n?/g, '\n') + (heldCr ? '\r' : '')
+  }
+
+  /** Dispatches every complete event in the buffer. */
+  function drain(): boolean {
+    for (let end = buffer.indexOf('\n\n'); end !== -1; end = buffer.indexOf('\n\n')) {
+      const block = buffer.slice(0, end)
+      buffer = buffer.slice(end + 2)
+      if (signal?.aborted) return true
+      if (dispatch(block)) return true
+    }
+    return false
+  }
+
+  try {
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>
+      try {
+        chunk = await reader.read()
+      } catch (caught) {
+        if (isAbort(caught) || signal?.aborted) return
+        if (!seenResults) throw new Error(OFFLINE)
+        handlers.onError({ code: 'failed', message: ANSWER_STOPPED })
+        return
+      }
+      if (signal?.aborted) return
+      if (chunk.done) {
+        append(decoder.decode(), true)
+        // A last event without its blank line still counts.
+        if (buffer.trim()) buffer += '\n\n'
+        finished = drain()
+        break
+      }
+      append(decoder.decode(chunk.value, { stream: true }), false)
+      if (drain()) {
+        finished = true
+        break
+      }
+    }
+  } finally {
+    signal?.removeEventListener('abort', cancel)
+    // Harmless on a stream that ended; frees the connection on one that did not.
+    cancel()
+  }
+
+  if (finished || signal?.aborted) return
+  if (!seenResults) throw new Error(ANSWER_STOPPED)
+  handlers.onError({ code: 'failed', message: ANSWER_STOPPED })
 }
 
 export async function startIndexing(

@@ -416,6 +416,133 @@ body {
   background: var(--mark-good);
 }
 
+/* ------------------------------------------------------------------ answer */
+
+/* The answer spans the reading column above the results, on the same left edge. */
+.answer-panel.ant-card {
+  max-width: 720px;
+  margin-bottom: 16px;
+  border-color: var(--ant-color-primary-border, rgba(22, 119, 255, 0.3));
+}
+
+.answer-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.answer-icon {
+  color: var(--ant-color-primary, #1677ff);
+}
+
+.answer-notice.ant-typography,
+.answer-note.ant-typography,
+.answer-footer.ant-typography,
+.answer-meta.ant-typography {
+  display: block;
+  font-size: 12px;
+}
+
+.answer-notice.ant-typography {
+  margin-bottom: 6px;
+}
+
+.answer-note.ant-typography {
+  margin-top: 6px;
+}
+
+/* Plain text, so line and paragraph breaks have to be kept by CSS. */
+.answer-text {
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer-not-found {
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+  font-style: italic;
+}
+
+.answer-skeleton.ant-skeleton {
+  padding-block: 4px;
+}
+
+.answer-error {
+  margin-top: 6px;
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+/* A citation: a small numbered pill that opens the result it points at. */
+.citation {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin: 0 2px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  vertical-align: 2px;
+  color: var(--ant-color-primary, #1677ff);
+  background: var(--ant-color-primary-bg, rgba(22, 119, 255, 0.08));
+  cursor: pointer;
+}
+
+.citation:hover {
+  background: var(--ant-color-primary-bg-hover, rgba(22, 119, 255, 0.16));
+}
+
+.citation:focus-visible {
+  outline: 2px solid var(--ant-color-primary, #1677ff);
+  outline-offset: 1px;
+}
+
+.answer-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.answer-source {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.answer-source .citation {
+  margin-left: 0;
+  vertical-align: 0;
+}
+
+.answer-source-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.answer-footer.ant-typography {
+  margin-top: 8px;
+}
+
+/* The [n] on a result the answer cites. */
+.result-cite {
+  margin-right: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ant-color-primary, #1677ff);
+}
+
 .search-page-actions {
   display: flex;
   justify-content: flex-end;

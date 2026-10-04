@@ -36,7 +36,7 @@ export function SearchBar({ onSearch, busy, initialValue = '' }: Props) {
           size="large"
           allowClear
           aria-label="Search documents"
-          placeholder="Ask a question, or describe the passage you want…"
+          placeholder="Ask a question or search your documents…"
           value={value}
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={keyDown}

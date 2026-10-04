@@ -80,6 +80,8 @@ describe('persisting settings', () => {
     await openTab('Search')
     await userEvent.click(screen.getByLabelText('Highlight query terms'))
     await waitFor(() => expect(stored().highlightTerms).toBe(false))
+    await userEvent.click(screen.getByLabelText('Answer questions with AI'))
+    await waitFor(() => expect(stored().answersEnabled).toBe(false))
     await openTab('Developer')
     await userEvent.click(screen.getByLabelText('Show admin links'))
     await waitFor(() => expect(stored().showAdminLinks).toBe(true))
@@ -100,6 +102,34 @@ describe('persisting settings', () => {
     await userEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
     await userEvent.click(await screen.findByRole('button', { name: /^reset$/i }))
     await waitFor(() => expect(stored()).toEqual(DEFAULT_SETTINGS))
+  })
+})
+
+describe('answering questions', () => {
+  it('is on by default and explained on the search tab', async () => {
+    renderWithProviders(<SettingsPage />)
+    await openTab('Search')
+    expect(screen.getByLabelText('Answer questions with AI')).toBeChecked()
+    expect(screen.getByText(/runs on this computer/i)).toBeInTheDocument()
+  })
+
+  it('remembers being turned off', async () => {
+    givenSettings({ answersEnabled: false })
+    renderWithProviders(<SettingsPage />)
+    await openTab('Search')
+    expect(screen.getByLabelText('Answer questions with AI')).not.toBeChecked()
+    await userEvent.click(screen.getByLabelText('Answer questions with AI'))
+    await waitFor(() => expect(stored().answersEnabled).toBe(true))
+  })
+
+  it('is not repeated on the settings page appearance tab', () => {
+    renderWithProviders(<SettingsPage />)
+    expect(screen.queryByLabelText('Answer questions with AI')).not.toBeInTheDocument()
+  })
+
+  it('ignores a stored value that is not a boolean', () => {
+    expect(coerceSettings({ answersEnabled: 'yes' }).answersEnabled).toBe(true)
+    expect(coerceSettings({ answersEnabled: false }).answersEnabled).toBe(false)
   })
 })
 
