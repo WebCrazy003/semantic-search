@@ -112,13 +112,18 @@ Run it on a Windows machine that has an internet connection:
 
 It installs uv and Node.js if they are missing, fetches a relocatable CPython, and
 writes everything into `release\docsage-<version>-win64-offline\`. The
-version comes from the [VERSION](VERSION) file. Expect about 6 GB and 20 to 50
-minutes; re-runs reuse the downloaded model.
+version comes from the [VERSION](VERSION) file. Expect about 11 GB and 30 to 60
+minutes; re-runs reuse the downloaded models and llama-server, kept in `models\`
+and `.build\`. GitHub downloads that drop are resumed and retried.
+
+Rebuilding deletes the release folder first, along with any accounts, index and
+documents in it: back up `data\`, `qdrant_storage\` and `documents\` from a release
+that has been used before running it again.
 
 ### What the release contains
 
-    run.bat              start, and open the browser
-    stop.bat             stop
+    run.bat              start the answer model and DocSage, and open the browser
+    stop.bat             stop both
     check.bat            prove the installation works
     README-FIRST.txt     instructions for whoever ends up using it
     .env                 settings, with QDRANT_PATH already set
@@ -127,6 +132,9 @@ minutes; re-runs reuse the downloaded model.
     backend\app\         the application
     frontend\dist\       the built interface
     models\bge-m3\       the embedding model
+    models\bge-reranker-v2-m3\   the reranker, used only for answers
+    models\llm\          the answer model, one GGUF file
+    llama\              llama-server (llama.cpp, CUDA 12 build) and its CUDA runtime
     runtime\python\      CPython, carried with the release
     runtime\lib\         every library, pinned by uv.lock
     runtime\vc_redist.x64.exe
@@ -154,6 +162,11 @@ machine.
   the release is one process on one port with no proxy. In development the folder is
   absent and Vite serves the UI as before.
 - **An NVIDIA GPU does the embedding when there is one.** See below.
+- **`run.bat` starts the answer model.** When `llama\llama-server.exe` and a GGUF in
+  `models\llm` are present it opens `llama-server` on `127.0.0.1:8081` in a minimised
+  window titled "Answer Model" and sets `LLM_URL` to it, unless `.env` already sets
+  `LLM_URL`. `stop.bat` stops it. Without an NVIDIA GPU answers stay off, as in
+  development, until `.env` says `LLM_REQUIRE_GPU=false`.
 
 ## GPU indexing on Windows
 
@@ -308,8 +321,7 @@ once whether to allow incoming connections; that prompt is this server.
 
 OCR for scanned PDFs, legacy `.doc`, `.odt` and `.rtf`, keyword and hybrid search,
 follow-up questions in a conversation, folder watching, PDF preview, email password
-reset, HTTPS, and for search, GPUs other than NVIDIA RTX and Apple Silicon. The Windows offline release does not bundle
-`llama-server` or the answer model yet. Image-only PDFs and encrypted files are reported as `unsupported` rather
+reset, HTTPS, and for search, GPUs other than NVIDIA RTX and Apple Silicon. Image-only PDFs and encrypted files are reported as `unsupported` rather
 than failing the run.
 
 ## Troubleshooting

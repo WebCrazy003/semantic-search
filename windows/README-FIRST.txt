@@ -29,8 +29,21 @@ Getting started
 6. Search from the Search tab. Chinese and Korean queries both work, and a
    query in one language finds passages in the other.
 
-Double-click stop.bat when you are finished, or just close the window titled
-"SPS Server".
+Double-click stop.bat when you are finished, or just close the windows titled
+"SPS Server" and "Answer Model".
+
+
+Written answers
+---------------
+
+When llama\llama-server.exe and a model file in models\llm are in this folder,
+run.bat also starts the answer model, in a minimised window titled "Answer
+Model", and the Search tab writes a short answer above the results, citing the
+pages it used. Without them, search works the same, just without answers.
+
+Answers need an NVIDIA GeForce RTX card. On a computer without one they stay
+off, because each would take a minute; add the line LLM_REQUIRE_GPU=false to
+.env to turn them on anyway.
 
 
 If something goes wrong
@@ -68,9 +81,9 @@ Sharing it on your network
 --------------------------
 
 run.bat lan  serves the interface to other computers on the same network and
-prints the address to use. There is NO login: anyone who can reach that address
-can search every indexed document, open the PDFs and clear the index. Use it
-only on a network you trust, and go back to plain run.bat afterwards.
+prints the address to use. Everyone logs in and sees only their own documents
+and public ones. The connection is not encrypted, so passwords and documents
+cross the network as plain text: use it only on a network you trust.
 
 
 What is in this folder
@@ -79,7 +92,8 @@ What is in this folder
 documents\        put your PDF and Word files here
 qdrant_storage\   the search index; delete it to start over, then re-index
 data\             bookkeeping about which files were indexed
-models\           the embedding model
+models\           the search models, and the answer model in models\llm
+llama\            llama-server, which runs the answer model (optional)
 runtime\          Python and the libraries; do not change anything in here
 .env              settings, plain text, safe to edit with Notepad
 

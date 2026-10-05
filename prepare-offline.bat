@@ -23,6 +23,14 @@ set "PATH=%UV_BIN%;%NODE_BIN%;%WINGET_LINKS%;%PATH%"
 rem PyTorch's CUDA index. uv export pins torch==X+cu128 but leaves the index out.
 set "TORCH_CUDA=cu128"
 set "TORCH_INDEX=https://download.pytorch.org/whl/%TORCH_CUDA%"
+rem llama-server, which runs the answer model. A pinned llama.cpp build, so every
+rem release carries the same one; its CUDA 12 build runs on driver 528 and newer.
+set "LLAMA_BUILD=b11401"
+set "LLAMA_CUDA=12.4"
+set "LLAMA_URL=https://github.com/ggml-org/llama.cpp/releases/download/%LLAMA_BUILD%"
+set "LLAMA_DIR=%BUILD%\llama-%LLAMA_BUILD%"
+rem The answer model scripts\download_model.py llm fetches.
+set "LLM_FILE=Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 rem Keep the interpreter this build downloads inside the build folder.
 set "UV_PYTHON_INSTALL_DIR=%BUILD%\python"
 
@@ -49,8 +57,9 @@ echo   Version %VERSION%
 echo   Output  release\%NAME%
 echo.
 echo   This machine needs a network. The result will not.
-echo   Expect roughly 6 GB and 20-50 minutes. Most of it is the CUDA build of
-echo   PyTorch, which lets indexing use an NVIDIA RTX GPU when there is one.
+echo   Expect roughly 11 GB and 30-60 minutes: the CUDA build of PyTorch, which
+echo   lets indexing use an NVIDIA RTX GPU, and three models, one of them the
+echo   answer model.
 echo.
 
 if not exist "%BUILD%" mkdir "%BUILD%"
@@ -58,7 +67,7 @@ if exist "%RELEASE%" rmdir /s /q "%RELEASE%"
 mkdir "%RELEASE%" 2>nul
 
 rem ---------------------------------------------------------------- 1. uv
-echo [1/9] uv
+echo [1/10] uv
 where uv >nul 2>&1 && goto :uv_ok
 where winget >nul 2>&1 && winget install --id astral-sh.uv -e --silent --accept-package-agreements --accept-source-agreements
 set "PATH=%UV_BIN%;%WINGET_LINKS%;%PATH%"
@@ -73,7 +82,7 @@ for /f "delims=" %%V in ('uv --version 2^>nul') do echo       OK    %%V
 
 rem ---------------------------------------------------------------- 2. Node
 echo.
-echo [2/9] Node.js, to build the interface
+echo [2/10] Node.js, to build the interface
 echo       Needed on this machine only. The release never runs Node.
 where npm >nul 2>&1 && goto :node_ok
 where winget >nul 2>&1
@@ -92,7 +101,7 @@ for /f "delims=" %%V in ('node --version 2^>nul') do echo       OK    Node %%V
 
 rem ---------------------------------------------------------------- 3. Python
 echo.
-echo [3/9] CPython %PY_VERSION%, the interpreter the release will carry
+echo [3/10] CPython %PY_VERSION%, the interpreter the release will carry
 uv python install %PY_VERSION%
 if errorlevel 1 (
     echo       FAIL  could not fetch CPython %PY_VERSION%
@@ -107,7 +116,7 @@ echo       OK    !PYROOT!
 
 rem ---------------------------------------------------------------- 4. pins
 echo.
-echo [4/9] Pinning every dependency from uv.lock
+echo [4/10] Pinning every dependency from uv.lock
 uv export --directory backend --format requirements.txt --no-hashes --no-dev --no-emit-project > "%BUILD%\requirements.txt"
 if errorlevel 1 (
     echo       FAIL  uv export failed
@@ -123,7 +132,7 @@ echo       OK    %BUILD%\requirements.txt
 
 rem ---------------------------------------------------------------- 5. libs
 echo.
-echo [5/9] Installing the libraries into the release (PyTorch is the big one)
+echo [5/10] Installing the libraries into the release (PyTorch is the big one)
 rem Every version is pinned, so taking each pin from whichever index has it is safe;
 rem the CUDA torch exists only on the PyTorch index.
 uv pip install --python "!BUNDLED_PY!" --target "%RELEASE%\runtime\lib" -r "%BUILD%\requirements.txt" --extra-index-url "%TORCH_INDEX%" --index-strategy unsafe-best-match
@@ -148,16 +157,21 @@ if not "!ERR!"=="0" (
     goto :failed
 )
 
-rem ---------------------------------------------------------------- 6. model
+rem ---------------------------------------------------------------- 6. models
 echo.
-echo [6/9] BGE-M3 embedding model, about 2.3 GB
-if exist "models\bge-m3\config.json" (
-    echo       OK    already downloaded into models\bge-m3, reusing it
+echo [6/10] Models: BGE-M3 for search, the reranker, the answer model, about 7 GB
+set "WANT="
+if not exist "models\bge-m3\config.json"              set "WANT=!WANT! bge-m3"
+if not exist "models\bge-reranker-v2-m3\config.json"  set "WANT=!WANT! reranker"
+if not exist "models\llm\%LLM_FILE%"                   set "WANT=!WANT! llm"
+if not defined WANT (
+    echo       OK    already downloaded into models\, reusing them
 ) else (
+    echo       downloading:!WANT!
     rem Run the downloader on the bundled interpreter, against the libraries
     rem just installed, so this build needs nothing else on the machine.
     set "PYTHONPATH=%RELEASE%\runtime\lib"
-    "!BUNDLED_PY!" "%CD%\scripts\download_model.py"
+    "!BUNDLED_PY!" "%CD%\scripts\download_model.py" !WANT!
     set "ERR=!errorlevel!"
     set "PYTHONPATH="
     if not "!ERR!"=="0" (
@@ -166,9 +180,19 @@ if exist "models\bge-m3\config.json" (
     )
 )
 
-rem ---------------------------------------------------------------- 7. interface
+rem ---------------------------------------------------------------- 7. llama-server
 echo.
-echo [7/9] Building the interface
+echo [7/10] llama-server %LLAMA_BUILD%, which runs the answer model, about 650 MB
+if exist "%LLAMA_DIR%\llama-server.exe" (
+    echo       OK    already unpacked in %LLAMA_DIR%, reusing it
+) else (
+    call :fetch_llama || goto :failed
+    echo       OK    %LLAMA_DIR%
+)
+
+rem ---------------------------------------------------------------- 8. interface
+echo.
+echo [8/10] Building the interface
 call npm --prefix frontend install
 if errorlevel 1 (
     echo       FAIL  npm install failed
@@ -185,13 +209,17 @@ if not exist "frontend\dist\index.html" (
 )
 echo       OK    frontend\dist
 
-rem ---------------------------------------------------------------- 8. assemble
+rem ---------------------------------------------------------------- 9. assemble
 echo.
-echo [8/9] Assembling the release
+echo [9/10] Assembling the release
 call :copy_tree "!PYROOT!"          "%RELEASE%\runtime\python"  ""   || goto :failed
 call :copy_tree "%CD%\backend\app"  "%RELEASE%\backend\app"     ""   || goto :failed
 call :copy_tree "%CD%\frontend\dist" "%RELEASE%\frontend\dist"  ""   || goto :failed
 call :copy_tree "%CD%\models\bge-m3" "%RELEASE%\models\bge-m3"  ""   || goto :failed
+call :copy_tree "%CD%\models\bge-reranker-v2-m3" "%RELEASE%\models\bge-reranker-v2-m3" "" || goto :failed
+call :copy_tree "%LLAMA_DIR%"       "%RELEASE%\llama"           ""   || goto :failed
+mkdir "%RELEASE%\models\llm" 2>nul
+copy /y "models\llm\%LLM_FILE%" "%RELEASE%\models\llm\%LLM_FILE%" >nul || goto :failed
 call :copy_tree "%CD%\scripts"      "%RELEASE%\scripts"         "*.py" || goto :failed
 
 copy /y "windows\run.bat"          "%RELEASE%\run.bat"          >nul
@@ -221,6 +249,7 @@ if exist "%BUILD%\vc_redist.x64.exe" (
 >>"%RELEASE%\VERSION.txt" echo Built %DATE% %TIME% on %COMPUTERNAME%
 >>"%RELEASE%\VERSION.txt" echo Python %PY_VERSION%
 >>"%RELEASE%\VERSION.txt" echo PyTorch CUDA build %TORCH_CUDA%, NVIDIA driver 528 or newer (570 or newer on RTX 50) for GPU indexing
+>>"%RELEASE%\VERSION.txt" echo llama.cpp %LLAMA_BUILD% (CUDA %LLAMA_CUDA%), answer model %LLM_FILE%
 copy /y "%BUILD%\requirements.txt" "%RELEASE%\runtime\requirements.txt" >nul
 set "BROKEN="
 for %%F in (run.bat stop.bat check.bat README-FIRST.txt .env VERSION.txt) do (
@@ -234,6 +263,9 @@ if not exist "%RELEASE%\runtime\lib\win32\lib\pywintypes.py" set "BROKEN=!BROKEN
 if not exist "%RELEASE%\backend\app\main.py"         set "BROKEN=!BROKEN! backend\app"
 if not exist "%RELEASE%\frontend\dist\index.html"    set "BROKEN=!BROKEN! frontend\dist"
 if not exist "%RELEASE%\models\bge-m3\config.json"   set "BROKEN=!BROKEN! models\bge-m3"
+if not exist "%RELEASE%\models\bge-reranker-v2-m3\config.json" set "BROKEN=!BROKEN! models\bge-reranker-v2-m3"
+if not exist "%RELEASE%\models\llm\%LLM_FILE%"        set "BROKEN=!BROKEN! models\llm"
+if not exist "%RELEASE%\llama\llama-server.exe"        set "BROKEN=!BROKEN! llama"
 if not exist "%RELEASE%\scripts\verify_install.py"    set "BROKEN=!BROKEN! scripts"
 if defined BROKEN (
     echo       FAIL  the release is missing:!BROKEN!
@@ -241,9 +273,9 @@ if defined BROKEN (
 )
 echo       OK    assembled
 
-rem ---------------------------------------------------------------- 9. finish
+rem ---------------------------------------------------------------- 10. finish
 echo.
-echo [9/9] Finishing
+echo [10/10] Finishing
 if defined MAKE_ZIP (
     echo       compressing, this takes a while...
     if exist "release\%NAME%.zip" del /q "release\%NAME%.zip"
@@ -293,6 +325,43 @@ if errorlevel 8 (
     exit /b 1
 )
 exit /b 0
+
+:fetch_llama
+rem The llama-server build and the CUDA runtime it needs, two zips unpacked into
+rem one folder. Unpacked beside it first, so a failed run never leaves a
+rem half-filled folder that the next run would take for a finished one.
+set "_part=%LLAMA_DIR%.part"
+if exist "%_part%" rmdir /s /q "%_part%"
+mkdir "%_part%"
+for %%Z in ("llama-%LLAMA_BUILD%-bin-win-cuda-%LLAMA_CUDA%-x64.zip" "cudart-llama-bin-win-cuda-%LLAMA_CUDA%-x64.zip") do (
+    call :fetch_zip "%%~Z" || exit /b 1
+    tar -xf "%BUILD%\%%~Z" -C "%_part%"
+    if errorlevel 1 (
+        echo       FAIL  could not unpack %%~Z
+        exit /b 1
+    )
+)
+if not exist "%_part%\llama-server.exe" (
+    echo       FAIL  the llama.cpp download has no llama-server.exe
+    exit /b 1
+)
+ren "%_part%" "llama-%LLAMA_BUILD%"
+exit /b 0
+
+:fetch_zip
+rem %1 a llama.cpp release file, kept in .build. GitHub downloads drop on some
+rem networks, so curl resumes the partial file and retries, and tar -t proves the
+rem zip is whole before it is used.
+set "_zip=%BUILD%\%~1"
+tar -tf "%_zip%" >nul 2>&1 && exit /b 0
+for /l %%N in (1,1,5) do (
+    curl -fL -C - --retry 20 --retry-all-errors --retry-delay 3 -o "%_zip%" "%LLAMA_URL%/%~1"
+    tar -tf "%_zip%" >nul 2>&1 && exit /b 0
+)
+rem Whole-sized but unreadable: start that file over next time.
+del /q "%_zip%" 2>nul
+echo       FAIL  could not download %~1. Check the network and run this again.
+exit /b 1
 
 :failed
 echo.

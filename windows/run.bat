@@ -53,6 +53,28 @@ if not exist "%SystemRoot%\System32\vcruntime140_1.dll" (
     echo.
 )
 
+rem ---------------------------------------------------------------- answer model
+rem Written answers need llama-server and a .gguf model. When both are in this
+rem folder, run them in a window of their own; without them, search works alone.
+set "LLM_PORT=8081"
+set "LLM_EXE=%~dp0llama\llama-server.exe"
+set "LLM_GGUF="
+for %%G in ("%~dp0models\llm\*.gguf") do if not defined LLM_GGUF set "LLM_GGUF=%%~fG"
+set "ANSWERS="
+if exist "%LLM_EXE%" if defined LLM_GGUF set "ANSWERS=1"
+if defined ANSWERS (
+    rem Point the backend at it, unless .env already names a model server.
+    findstr /r /c:"^LLM_URL=.." .env >nul 2>&1 || set "LLM_URL=http://127.0.0.1:%LLM_PORT%/v1"
+    curl -s -o nul -m 2 "http://127.0.0.1:%LLM_PORT%/health" >nul 2>&1
+    if errorlevel 1 (
+        echo   Starting the answer model.
+        start "Answer Model" /min cmd /k "title Answer Model & "%LLM_EXE%" -m "%LLM_GGUF%" --host 127.0.0.1 --port %LLM_PORT% -c 8192 -ngl 99 -np 1 --no-webui"
+    ) else (
+        echo   The answer model is already running.
+    )
+    echo.
+)
+
 rem Already up? Never start a second one: the vector store is single-writer.
 curl -s -o nul -m 2 "http://127.0.0.1:%PORT%/api/health" >nul 2>&1
 if not errorlevel 1 (
@@ -76,6 +98,14 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if defined ANSWERS (
+    call :wait_url "http://127.0.0.1:%LLM_PORT%/health" 120
+    if errorlevel 1 (
+        echo   NOTE  the answer model is not ready. The window titled "Answer Model"
+        echo         says why. Search works meanwhile, without written answers.
+    )
+)
+
 echo.
 echo ============================================================
 echo   Running.  http://127.0.0.1:%PORT%/
@@ -92,6 +122,7 @@ if /i "%BIND%"=="0.0.0.0" (
 )
 echo.
 echo   The window titled "SPS Server" holds the log. Leave it open.
+if defined ANSWERS echo   So does "Answer Model", which writes the answers.
 echo   Stop with:  stop.bat
 echo.
 start "" "http://127.0.0.1:%PORT%/"
