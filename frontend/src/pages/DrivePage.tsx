@@ -68,6 +68,7 @@ import {
 } from '../components/drive/fileState'
 import {
   createDriveFolder,
+  deleteDriveFiles,
   deleteDriveFolder,
   documentFileUrl,
   errorText,
@@ -76,7 +77,6 @@ import {
   listDrive,
   listUsers,
   moveDriveItems,
-  removeDocument,
   renameDriveFolder,
   setVisibilityInBulk,
   type DocumentSummary,
@@ -306,9 +306,11 @@ export function DrivePage() {
   }
 
   function remove(files: DriveFile[], folders: DriveFolder[]) {
-    const deletable = files.filter((file) => file.document_id)
+    if (!treeName) return
+    const tree = treeName
+    const doomed = deletableFiles(files, tree)
     const inside = folders.reduce((total, folder) => total + folder.file_count, 0)
-    const count = deletable.length + folders.length
+    const count = doomed.length + folders.length
     if (count === 0) return
     modal.confirm({
       title: `Delete ${count} ${count === 1 ? 'item' : 'items'}?`,
@@ -323,7 +325,7 @@ export function DrivePage() {
       okButtonProps: { danger: true },
       onOk: () =>
         act(async () => {
-          for (const file of deletable) await removeDocument(file.document_id!)
+          if (doomed.length) await deleteDriveFiles(tree, doomed.map((file) => file.file_id))
           for (const folder of folders) await deleteDriveFolder(folder.folder_id)
           setSelected([])
         }, 'Deleted'),
@@ -425,7 +427,7 @@ export function DrivePage() {
           { key: 'private', icon: <LockOutlined />, label: 'Make private' },
         ]
       : []),
-    ...(deletable(chosenFiles, chosenFolders)
+    ...(deletable(chosenFiles, chosenFolders, treeName)
       ? [{ type: 'divider' as const }, { key: 'delete', icon: <DeleteOutlined />, label: 'Delete', danger: true }]
       : []),
   ]
@@ -659,7 +661,7 @@ export function DrivePage() {
             <Button icon={<SwapOutlined />} onClick={() => setMoving({ fileIds: chosenFiles.map((file) => file.file_id), folderIds: chosenFolders.map((folder) => folder.folder_id) })}>
               Move to…
             </Button>
-            {deletable(chosenFiles, chosenFolders) ? (
+            {deletable(chosenFiles, chosenFolders, treeName) ? (
               <Button danger icon={<DeleteOutlined />} onClick={() => remove(chosenFiles, chosenFolders)}>
                 Delete
               </Button>
@@ -903,11 +905,15 @@ function PublicList({ documents, isAdmin }: { documents: DocumentSummary[]; isAd
 }
 
 /**
- * Whether there is anything to delete: a folder, or a file with an index record. A file
- * that was never indexed has none to delete by; index it first.
+ * The files a delete would act on. Any of one's own; in the library, only indexed ones,
+ * since a library file stays on disk and deleting it only takes it out of search.
  */
-function deletable(files: DriveFile[], folders: DriveFolder[]): boolean {
-  return folders.length > 0 || files.some((file) => file.document_id)
+function deletableFiles(files: DriveFile[], tree: string | null): DriveFile[] {
+  return tree === 'library' ? files.filter((file) => file.document_id) : files
+}
+
+function deletable(files: DriveFile[], folders: DriveFolder[], tree: string | null): boolean {
+  return folders.length > 0 || deletableFiles(files, tree).length > 0
 }
 
 function nameOf(row: Row): string {

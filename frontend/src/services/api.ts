@@ -563,9 +563,6 @@ export async function uploadDocuments(files: File[]): Promise<UploadResult> {
   return call<UploadResult>('/api/documents/upload', { method: 'POST', body: form })
 }
 
-export function removeDocument(documentId: string): Promise<RemovedDocument> {
-  return call<RemovedDocument>(`/api/documents/${documentId}`, { method: 'DELETE' })
-}
 
 export function clearIndex(): Promise<ClearResult> {
   return call<ClearResult>('/api/index/clear', { method: 'POST' })
@@ -1058,6 +1055,15 @@ export function renameDriveFolder(folderId: string, name: string): Promise<Drive
 
 export function deleteDriveFolder(folderId: string): Promise<void> {
   return call<void>(`/api/drive/folders/${folderId}`, { method: 'DELETE' })
+}
+
+/** Delete files, indexed or not. Library files are only removed from search. */
+export function deleteDriveFiles(tree: string, fileIds: string[]): Promise<void> {
+  return call<void>('/api/drive/files/delete', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ tree, file_ids: fileIds }),
+  })
 }
 
 export function moveDriveItems(

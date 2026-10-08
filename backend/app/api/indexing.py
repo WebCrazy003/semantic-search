@@ -88,7 +88,13 @@ def index_status(
     snapshot = container.indexing.snapshot()
     if not user.is_admin and snapshot.scope != user.user_id:
         snapshot = snapshot.model_copy(
-            update={"directory": None, "current_file": None, "failures": []}
+            update={
+                "directory": None,
+                "current_file": None,
+                "failures": [],
+                # Whose run it is (a user id) is none of the caller's business either.
+                "scope": "library" if snapshot.scope == "library" else "other",
+            }
         )
     # The upload panel's rows: the caller's own files, in this run and queued behind it.
     mine = snapshot.scope == user.user_id

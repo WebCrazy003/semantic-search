@@ -21,6 +21,7 @@ from app.deps import Container, get_container
 from app.logging_config import get_logger
 from app.models.request_models import (
     CreateFolderRequest,
+    DriveDeleteRequest,
     DriveIndexRequest,
     DriveMoveRequest,
     RenameFolderRequest,
@@ -35,8 +36,9 @@ from app.models.response_models import (
 )
 from app.services.access_store import User
 from app.services.drive_service import FileState
-from app.services.drive_store import DriveError, Folder, NameTakenError
+from app.services.drive_store import DriveError, DriveFile, Folder, NameTakenError
 from app.services.extractors import file_type_for
+from app.services.manifest_service import DocumentRecord
 from app.services.ownership import LIBRARY, user_folder, within
 
 logger = get_logger("api.drive")
@@ -163,20 +165,39 @@ def delete_folder(
     folder = _own_folder(container, user, folder_id)
     store = container.drive.store
     files = store.files_under(folder.folder_id)
-    if container.indexing.is_running or container.drive.busy(folder.tree, files):
+    by_path = container.drive.records_by_path()
+    if container.indexing.is_running or container.drive.busy(folder.tree, files, by_path):
         raise HTTPException(
             status_code=409, detail="Wait until indexing finishes, then delete the folder"
         )
-    by_path = container.drive.records_by_path()
-    for file in files:
-        record = by_path.get(file.path)
-        if record is not None:
-            remove_document(container, record)
-        elif folder.tree != LIBRARY:
-            _delete_upload(container, folder.tree, file.path)
-        store.forget(file.path)
+    _purge(container, folder.tree, files, by_path)
+    # Library files stay on disk; without their folder they go back to the top.
+    store.forget_many([file.path for file in files])
     store.delete_folder(folder.folder_id)
     logger.info("%s deleted folder %s with %d file(s)", user.username, folder.name, len(files))
+    return Response(status_code=204)
+
+
+@router.post("/drive/files/delete", status_code=204)
+def delete_files(
+    body: DriveDeleteRequest,
+    user: User = Depends(active_user),
+    container: Container = Depends(get_container),
+) -> Response:
+    """Delete files, indexed or not. A user's uploads are deleted from disk; library
+    files are only unindexed, as deleting a document always does."""
+    owner = resolve_tree(container, user, body.tree)
+    try:
+        files = container.drive.store.files_by_id(owner, body.file_ids)
+    except DriveError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    by_path = container.drive.records_by_path()
+    if container.indexing.is_running or container.drive.busy(owner, files, by_path):
+        raise HTTPException(status_code=409, detail="Wait until indexing finishes, then delete")
+    _purge(container, owner, files, by_path)
+    if owner != LIBRARY:
+        container.drive.store.forget_many([file.path for file in files])
+    logger.info("%s deleted %d file(s)", user.username, len(files))
     return Response(status_code=204)
 
 
@@ -295,6 +316,39 @@ def _on_disk(path: Path) -> tuple[int, datetime | None]:
     except OSError:
         return 0, None
     return stat.st_size, datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+
+
+def _purge(
+    container: Container,
+    tree: str,
+    files: list[DriveFile],
+    by_path: dict[str, DocumentRecord],
+) -> None:
+    """Take files out of search and, for a user's uploads, off the disk.
+
+    A file whose content another of the owner's files shares is one copy of a document
+    that stays: only that copy goes, and the document is pointed at the other one.
+    """
+    for file in files:
+        record = by_path.get(file.path)
+        if record is None:
+            if tree != LIBRARY:
+                _delete_upload(container, tree, file.path)
+        elif tree != LIBRARY and len(record.known_paths) > 1:
+            _delete_upload(container, tree, file.path)
+            _forget_copy(container, record, file.path)
+        else:
+            remove_document(container, record)
+
+
+def _forget_copy(container: Container, record: DocumentRecord, path: str) -> None:
+    others = [known for known in record.known_paths if known != path]
+    record.alt_filepaths = others[1:]
+    if record.filepath == path:
+        record.filepath = others[0]
+        record.filename = Path(others[0]).name
+        container.qdrant.set_location(record.document_id, record.filepath, record.filename)
+    container.manifest.upsert(record)
 
 
 def _delete_upload(container: Container, tree: str, path: str) -> None:

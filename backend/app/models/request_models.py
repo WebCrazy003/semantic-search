@@ -126,6 +126,11 @@ class DriveMoveRequest(BaseModel):
     to: str | None = None
 
 
+class DriveDeleteRequest(BaseModel):
+    tree: str = "me"
+    file_ids: list[str] = Field(min_length=1, max_length=1000)
+
+
 class DriveIndexRequest(BaseModel):
     tree: str = "me"
     # None: every file in the tree that is not indexed yet.

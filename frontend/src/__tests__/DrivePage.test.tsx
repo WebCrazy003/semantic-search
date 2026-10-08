@@ -159,6 +159,19 @@ describe('the document manager', () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith('folder-1'))
   })
 
+  it('deletes a file that was never indexed, after asking', async () => {
+    asUser()
+    givenDrive([makeDriveFile({ file_id: 'n', name: 'never.pdf', state: 'not_indexed', document_id: null })])
+    const remove = vi.spyOn(api, 'deleteDriveFiles').mockResolvedValue()
+    renderApp('/drive')
+    const row = (await screen.findByText('never.pdf')).closest('tr')!
+    await userEvent.click(within(row).getByRole('checkbox'))
+    await userEvent.click(screen.getByRole('button', { name: /delete/i }))
+    const confirm = await screen.findByRole('dialog')
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('me', ['n']))
+  })
+
   it('keeps the summary to three lines, with no charts', async () => {
     asUser()
     vi.spyOn(api, 'getDocuments').mockResolvedValue([])

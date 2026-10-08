@@ -171,6 +171,7 @@ def delete_user(
         files += sum(1 for path in folder.rglob("*") if path.is_file())
         shutil.rmtree(folder)
 
+    container.drive.store.forget_tree(user_id)
     container.access.delete_user(user_id)
     logger.info(
         "%s deleted the account %s with %d document(s)", admin.username, target.username, len(owned)

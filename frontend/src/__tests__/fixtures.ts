@@ -1,8 +1,6 @@
 // frontend/src/__tests__/fixtures.ts
 // Shared shapes for the UI tests, so adding a field to an API type is a one-line change.
 
-import { vi } from 'vitest'
-import type { Library } from '../hooks/useLibrary'
 import type {
   DocumentSummary,
   IndexStatus,
@@ -73,25 +71,6 @@ export function makeJob(overrides: Partial<JobSummary> = {}): JobSummary {
     deleted: 0,
     chunks: 279,
     failures: [],
-    ...overrides,
-  }
-}
-
-export function makeLibrary(overrides: Partial<Library> = {}): Library {
-  return {
-    documents: [],
-    loaded: true,
-    status: makeStatus(),
-    error: null,
-    busy: false,
-    lastUpload: null,
-    lastClear: null,
-    refresh: vi.fn().mockResolvedValue(undefined),
-    importFiles: vi.fn().mockResolvedValue(undefined),
-    setVisibility: vi.fn().mockResolvedValue(undefined),
-    remove: vi.fn().mockResolvedValue(undefined),
-    clearAll: vi.fn().mockResolvedValue(undefined),
-    dismissError: vi.fn(),
     ...overrides,
   }
 }

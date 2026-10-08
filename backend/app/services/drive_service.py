@@ -102,11 +102,17 @@ class DriveService:
 
     # ---------------------------------------------------------------- states
 
-    def states(self, tree: str, files: list[DriveFile]) -> dict[str, FileState]:
+    def states(
+        self,
+        tree: str,
+        files: list[DriveFile],
+        by_path: dict[str, DocumentRecord] | None = None,
+    ) -> dict[str, FileState]:
         """Each file's place in indexing, by file id."""
         if not files:
             return {}
-        by_path = self.records_by_path()
+        if by_path is None:
+            by_path = self.records_by_path()
 
         snapshot = self._indexing.snapshot()
         running = (
@@ -149,9 +155,14 @@ class DriveService:
         states = self.states(tree, files)
         return [file for file in files if states[file.file_id].state == "not_indexed"]
 
-    def busy(self, tree: str, files: list[DriveFile]) -> bool:
+    def busy(
+        self,
+        tree: str,
+        files: list[DriveFile],
+        by_path: dict[str, DocumentRecord] | None = None,
+    ) -> bool:
         """Whether any of these files is being indexed or waiting to be."""
-        states = self.states(tree, files)
+        states = self.states(tree, files, by_path)
         return any(states[file.file_id].state in _IN_RUN for file in files)
 
     # -------------------------------------------------------------- indexing

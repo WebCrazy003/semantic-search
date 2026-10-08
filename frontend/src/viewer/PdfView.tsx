@@ -26,6 +26,8 @@ GlobalWorkerOptions.workerSrc = workerUrl
 const asset = (path: string) => new URL(`pdfjs/${path}/`, document.baseURI).href
 
 const PAGE_GAP = 12
+// Pages either side of the one in view that stay drawn; the rest are released.
+const KEEP = 3
 const SIDE_PADDING = 16
 // Pages either side of the hit whose text is searched too: a passage can start on the
 // page before the one its first sentence was counted on.
@@ -148,7 +150,9 @@ export default function PdfView({ data, target, terms, zoom, onStatus }: ViewPro
   const scale = base && width ? ((width - 2 * SIDE_PADDING) / base.width) * zoom : 0
   const pageHeight = base ? base.height * scale : 0
 
-  // Page indicator: which page is in the middle of the view.
+  // Which page is in view: for the page indicator, and to decide which pages to keep
+  // drawn (the ones near it, see KEEP).
+  const [inView, setInView] = useState(target?.pageStart ?? 1)
   useEffect(() => {
     const element = scrollRef.current
     if (!element || !pdf || !pageHeight) return
@@ -158,6 +162,7 @@ export default function PdfView({ data, target, terms, zoom, onStatus }: ViewPro
       const page = Math.min(pdf.numPages, Math.max(1, Math.floor(middle / (pageHeight + PAGE_GAP)) + 1))
       if (page === shown) return
       shown = page
+      setInView(page)
       onStatus({ page })
     }
     onScroll()
@@ -175,6 +180,9 @@ export default function PdfView({ data, target, terms, zoom, onStatus }: ViewPro
     if (!element || !pageHeight || !target || startedFor.current === targetKey) return
     startedFor.current = targetKey
     element.scrollTop = (pageStart - 1) * (pageHeight + PAGE_GAP)
+    // Said here too, not left to the scroll event: until it fires, the first pages
+    // would count as in view and be drawn for nothing.
+    setInView(pageStart)
     // target is represented by targetKey and pageStart.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageHeight, targetKey, pageStart])
@@ -184,6 +192,21 @@ export default function PdfView({ data, target, terms, zoom, onStatus }: ViewPro
     for (let page = pageStart - WINDOW; page <= pageEnd + WINDOW; page++) pages.add(page)
     return pages
   }, [pageStart, pageEnd])
+
+  // Drawn within KEEP pages of the one in view, released only beyond KEEP + 2, so
+  // scrolling back and forth over a page boundary does not redraw the same pages.
+  const nearRef = useRef(new Set<number>())
+  const nearPages = useMemo(() => {
+    const next = new Set<number>()
+    for (let page = 1; page <= (pdf?.numPages ?? 0); page++) {
+      const distance = Math.abs(page - inView)
+      if (eager.has(page) || distance <= KEEP || (nearRef.current.has(page) && distance <= KEEP + 2)) {
+        next.add(page)
+      }
+    }
+    nearRef.current = next
+    return next
+  }, [pdf, inView, eager])
 
   /** The first painted passage box: bring it to the upper third of the view, once. */
   const scrollToMark = useCallback(
@@ -210,8 +233,7 @@ export default function PdfView({ data, target, terms, zoom, onStatus }: ViewPro
               number={index + 1}
               scale={scale}
               placeholderHeight={pageHeight}
-              eager={eager.has(index + 1)}
-              root={scrollRef}
+              near={nearPages.has(index + 1)}
               marks={marks.get(index + 1)}
               onPassagePainted={scrollToMark}
             />
@@ -234,8 +256,7 @@ const PdfPage = memo(function PdfPage({
   number,
   scale,
   placeholderHeight,
-  eager,
-  root,
+  near,
   marks,
   onPassagePainted,
 }: {
@@ -243,8 +264,8 @@ const PdfPage = memo(function PdfPage({
   number: number
   scale: number
   placeholderHeight: number
-  eager: boolean
-  root: React.RefObject<HTMLDivElement | null>
+  /** Drawn when near the page in view, released when not. */
+  near: boolean
   marks?: { passage: Piece[][]; terms: Piece[][] }
   onPassagePainted: (box: HTMLElement) => void
 }) {
@@ -252,27 +273,29 @@ const PdfPage = memo(function PdfPage({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textRef = useRef<HTMLDivElement>(null)
   const marksRef = useRef<HTMLDivElement>(null)
-  const [near, setNear] = useState(eager)
   const [layer, setLayer] = useState<TextLayer | null>(null)
   const [size, setSize] = useState<{ width: number; height: number } | null>(null)
 
+  // Released when it scrolls away from the view: a canvas is several megabytes, and a
+  // long PDF would otherwise keep every page it has ever shown.
+  const drawn = useRef(false)
   useEffect(() => {
-    if (near) return
-    const element = pageRef.current
-    if (!element) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) setNear(true)
-      },
-      { root: root.current, rootMargin: '600px 0px' },
-    )
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [near, root])
-
-  useEffect(() => {
-    if (eager) setNear(true)
-  }, [eager])
+    if (near || !drawn.current) return
+    drawn.current = false
+    const canvas = canvasRef.current
+    if (canvas) {
+      canvas.width = 0
+      canvas.height = 0
+    }
+    textRef.current?.replaceChildren()
+    let cancelled = false
+    void pdf.getPage(number).then((page) => {
+      if (!cancelled) page.cleanup()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [near, pdf, number])
 
   // Draw the canvas and the text layer, again whenever the scale changes.
   useEffect(() => {
@@ -284,6 +307,7 @@ const PdfPage = memo(function PdfPage({
     void (async () => {
       page = await pdf.getPage(number)
       if (cancelled) return
+      drawn.current = true
       const viewport = page.getViewport({ scale })
       setSize({ width: viewport.width, height: viewport.height })
       const canvas = canvasRef.current

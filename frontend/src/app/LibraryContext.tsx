@@ -1,8 +1,7 @@
 // frontend/src/app/LibraryContext.tsx
-// One library poller for the whole app. Routes mount and unmount as the user navigates,
-// so the hook cannot live in a page: the Documents page, the hero's counters and the
-// Admin document picker would each start their own 500 ms poll and disagree with each
-// other. This keeps exactly one.
+// One library poller for the pages that need it (the document manager, the admin page),
+// so a page and the components inside it agree about what is indexed instead of each
+// polling on its own.
 
 import { createContext, useContext, type ReactNode } from 'react'
 import { useLibrary, type Library } from '../hooks/useLibrary'

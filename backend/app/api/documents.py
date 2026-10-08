@@ -1,10 +1,10 @@
 # backend/app/api/documents.py
 from __future__ import annotations
 
-import io
 import re
 import zipfile
 from pathlib import Path
+from typing import BinaryIO
 
 from fastapi import (
     APIRouter,
@@ -151,25 +151,14 @@ async def upload_documents(
             rejected.append(RejectedUpload(filename=sent, reason=_NOT_SUPPORTED))
             continue
 
-        payload = await upload.read()
-        if len(payload) > _MAX_UPLOAD_BYTES:
-            rejected.append(
-                RejectedUpload(
-                    filename=sent,
-                    reason=f"larger than {_MAX_UPLOAD_BYTES // 1024 // 1024} MB",
-                )
-            )
+        stored = await _store(upload, directory / name, suffix)
+        if isinstance(stored, str):
+            rejected.append(RejectedUpload(filename=sent, reason=stored))
             continue
-        problem = _header_problem(suffix, payload)
-        if problem:
-            rejected.append(RejectedUpload(filename=sent, reason=problem))
-            continue
-
-        target = _free_path(directory / name)
-        target.write_bytes(payload)
+        target, size = stored
         saved.append(target.name)
         added.append(container.drive.store.add(user.user_id, str(target), folder_id or None))
-        logger.info("stored upload %s (%d bytes)", target.name, len(payload))
+        logger.info("stored upload %s (%d bytes)", target.name, size)
 
     indexing = None
     if added:
@@ -296,16 +285,21 @@ def set_document_visibility(
     return VisibilityResponse(document_id=document_id, visibility=body.visibility)
 
 
-def _header_problem(suffix: str, payload: bytes) -> str | None:
-    """Check the bytes match the name, so a renamed file is refused up front."""
+def _header_problem(suffix: str, head: bytes) -> str | None:
+    """Check the first bytes match the name, so a renamed file is refused up front."""
     if suffix == ".pdf":
-        return None if payload.startswith(_PDF_MAGIC) else "not a PDF (bad header)"
-    if payload.startswith(OLE_MAGIC):
+        return None if head.startswith(_PDF_MAGIC) else "not a PDF (bad header)"
+    if head.startswith(OLE_MAGIC):
         return "a password-protected or old-format (.doc) Word file"
-    if not payload.startswith(ZIP_MAGIC):
+    if not head.startswith(ZIP_MAGIC):
         return "not a Word .docx file (bad header)"
+    return None
+
+
+def _docx_problem(path: Path) -> str | None:
+    """A .docx is a zip with the document inside; check the saved file is one."""
     try:
-        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        with zipfile.ZipFile(path) as archive:
             archive.getinfo("word/document.xml")
     except (zipfile.BadZipFile, KeyError):
         return "not a Word .docx file (no document inside)"
@@ -319,13 +313,57 @@ def _safe_name(raw: str) -> str:
     return name.lstrip(".")
 
 
-def _free_path(target: Path) -> Path:
-    """Never overwrite an existing file; add ' (2)', ' (3)', and so on."""
-    if not target.exists():
-        return target
+def _claim(target: Path) -> tuple[Path, BinaryIO]:
+    """Open a name nobody has for writing; add ' (2)', ' (3)', and so on.
+
+    Exclusive create ("xb") rather than checking first: two uploads of the same name at
+    the same moment each get their own file instead of one overwriting the other.
+    """
     stem, suffix = target.stem, target.suffix
-    for counter in range(2, 1000):
-        candidate = target.with_name(f"{stem} ({counter}){suffix}")
-        if not candidate.exists():
-            return candidate
+    for counter in range(1, 1000):
+        candidate = target if counter == 1 else target.with_name(f"{stem} ({counter}){suffix}")
+        try:
+            return candidate, candidate.open("xb")
+        except FileExistsError:
+            continue
     raise HTTPException(status_code=409, detail=f"too many files named {target.name}")
+
+
+_CHUNK = 1024 * 1024
+_TOO_LARGE = f"larger than {_MAX_UPLOAD_BYTES // 1024 // 1024} MB"
+
+
+async def _store(upload: UploadFile, target: Path, suffix: str) -> tuple[Path, int] | str:
+    """Save an upload under a free name, a chunk at a time. Returns (path, size), or the
+    reason it was refused, in which case nothing is left on disk.
+
+    Starlette has already spooled the request to a temporary file; this copies it in
+    chunks rather than holding the file in memory, and stops at the size limit.
+    """
+    if upload.size is not None and upload.size > _MAX_UPLOAD_BYTES:
+        return _TOO_LARGE
+    head = await upload.read(_CHUNK)
+    problem = _header_problem(suffix, head)
+    if problem:
+        return problem
+    path, handle = _claim(target)
+    size = 0
+    try:
+        with handle:
+            chunk = head
+            while chunk:
+                size += len(chunk)
+                if size > _MAX_UPLOAD_BYTES:
+                    problem = _TOO_LARGE
+                    break
+                handle.write(chunk)
+                chunk = await upload.read(_CHUNK)
+        if problem is None and suffix == ".docx":
+            problem = _docx_problem(path)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    if problem:
+        path.unlink(missing_ok=True)
+        return problem
+    return path, size

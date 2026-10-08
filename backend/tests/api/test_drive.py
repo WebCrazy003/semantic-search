@@ -342,3 +342,107 @@ class TestRobustness:
         finally:
             container.indexing.run(None, False)
         assert client.post("/api/index/clear").status_code == 200
+
+
+class TestGaps:
+    def test_a_file_that_was_never_indexed_can_be_deleted(
+        self, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        kim = user_client("kim")
+        kim_id = container.access.find_user("kim").user_id
+        home = user_folder(container.settings.pdf_directory, kim_id)
+        home.mkdir(parents=True, exist_ok=True)
+        shutil.copy(corpus_dir / "manual_ko.pdf", home / "never.pdf")
+        _upload(kim, corpus_dir / "manual_zh.pdf", "kept.pdf")
+        never = next(f for f in _list(kim)["files"] if f["name"] == "never.pdf")
+        assert never["state"] == "not_indexed"
+
+        response = kim.post("/api/drive/files/delete", json={"tree": "me", "file_ids": [never["file_id"]]})
+        assert response.status_code == 204
+        assert not (home / "never.pdf").exists()
+        assert _names(_list(kim)) == {"kept.pdf": "indexed"}
+
+    def test_an_indexed_file_is_deleted_with_its_passages(
+        self, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        kim = user_client("kim")
+        _upload(kim, corpus_dir / "manual_zh.pdf", "a.pdf")
+        file_id = _list(kim)["files"][0]["file_id"]
+        kim.post("/api/drive/files/delete", json={"tree": "me", "file_ids": [file_id]})
+        assert kim.get("/api/documents").json() == []
+        assert _list(kim)["files"] == []
+
+    def test_someone_elses_file_cannot_be_deleted(self, user_client, corpus_dir: Path) -> None:
+        kim, lee = user_client("kim"), user_client("lee")
+        _upload(kim, corpus_dir / "manual_zh.pdf", "a.pdf")
+        file_id = _list(kim)["files"][0]["file_id"]
+        assert lee.post("/api/drive/files/delete", json={"tree": "me", "file_ids": [file_id]}).status_code == 404
+        assert _names(_list(kim)) == {"a.pdf": "indexed"}
+
+    def test_deleting_a_user_deletes_their_folders(
+        self, client: TestClient, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        kim = user_client("kim")
+        kim_id = container.access.find_user("kim").user_id
+        _upload(kim, corpus_dir / "manual_zh.pdf", "a.pdf", _folder(kim, "Kept"))
+        assert client.delete(f"/api/admin/users/{kim_id}", params={"documents": "delete"}).status_code == 200
+        assert container.drive.store.folders(kim_id) == []
+        assert container.drive.store.files(kim_id) == []
+
+    def test_two_uploads_of_one_name_both_keep_their_file(
+        self, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        kim = user_client("kim")
+        kim_id = container.access.find_user("kim").user_id
+        _upload(kim, corpus_dir / "manual_zh.pdf", "same.pdf")
+        _upload(kim, corpus_dir / "manual_ko.pdf", "same.pdf")
+        home = user_folder(container.settings.pdf_directory, kim_id)
+        assert sorted(p.name for p in home.iterdir()) == ["same (2).pdf", "same.pdf"]
+        assert (home / "same.pdf").read_bytes() == (corpus_dir / "manual_zh.pdf").read_bytes()
+
+    def test_an_oversized_upload_is_refused(self, user_client, monkeypatch) -> None:  # noqa: ANN001
+        import app.api.documents as documents
+
+        monkeypatch.setattr(documents, "_MAX_UPLOAD_BYTES", 1000)
+        kim = user_client("kim")
+        response = kim.post(
+            "/api/documents/upload",
+            files=[("files", ("big.pdf", b"%PDF-" + b"x" * 5000, "application/pdf"))],
+        )
+        assert response.json()["rejected"][0]["reason"].startswith("larger than")
+
+    def test_someone_elses_run_does_not_say_whose(
+        self, user_client, container  # noqa: ANN001
+    ) -> None:
+        kim, lee = user_client("kim"), user_client("lee")
+        lee_id = container.access.find_user("lee").user_id
+        assert container.indexing.start(
+            user_folder(container.settings.pdf_directory, lee_id), False, scope=lee_id
+        )
+        try:
+            assert kim.get("/api/index/status").json()["scope"] == "other"
+            assert lee.get("/api/index/status").json()["scope"] == lee_id
+        finally:
+            container.indexing.run(user_folder(container.settings.pdf_directory, lee_id), False)
+
+    def test_deleting_one_copy_keeps_the_other(
+        self, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        """Two files with the same content are one document; deleting one copy must
+        leave the other on disk, searchable, and openable."""
+        kim = user_client("kim")
+        kim_id = container.access.find_user("kim").user_id
+        home = user_folder(container.settings.pdf_directory, kim_id)
+        home.mkdir(parents=True, exist_ok=True)
+        shutil.copy(corpus_dir / "manual_zh.pdf", home / "first.pdf")
+        shutil.copy(corpus_dir / "manual_zh.pdf", home / "second.pdf")
+        kim.post("/api/index", json={})
+        first = next(f for f in _list(kim)["files"] if f["name"] == "first.pdf")
+
+        assert kim.post("/api/drive/files/delete", json={"tree": "me", "file_ids": [first["file_id"]]}).status_code == 204
+        assert not (home / "first.pdf").exists()
+        assert (home / "second.pdf").exists()
+        document = kim.get("/api/documents").json()[0]
+        assert document["filename"] == "second.pdf"
+        assert kim.get(f"/api/documents/{document['document_id']}/file").status_code == 200
+        assert _names(_list(kim)) == {"second.pdf": "indexed"}

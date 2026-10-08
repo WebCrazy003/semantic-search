@@ -346,8 +346,19 @@ class DriveStore:
                     (to, file_id, tree),
                 )
 
+    def forget_tree(self, tree: str) -> None:
+        """Everything of one tree: its folders and every file's placement."""
+        with self._transaction():
+            self._write("DELETE FROM drive_files WHERE tree = ?", (tree,))
+            self._write("DELETE FROM drive_folders WHERE tree = ?", (tree,))
+
     def forget(self, path: str) -> None:
         self._write("DELETE FROM drive_files WHERE path = ?", (path,))
+
+    def forget_many(self, paths: list[str]) -> None:
+        with self._transaction():
+            for path in paths:
+                self.forget(path)
 
     def relocate(self, old: str, new: str) -> None:
         """A file moved by hand on disk keeps its folder."""
