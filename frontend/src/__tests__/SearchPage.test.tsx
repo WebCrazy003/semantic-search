@@ -461,6 +461,36 @@ describe('the result card', () => {
   })
 })
 
+describe('a results link opened fresh', () => {
+  it('waits for a check that never answers only once', async () => {
+    vi.spyOn(api, 'fetchReadiness').mockReturnValue(new Promise(() => undefined))
+    const searchSpy = vi.spyOn(api, 'search').mockResolvedValue(response)
+    renderApp()
+    await searchFor('更换滤芯')
+    await waitFor(() => expect(searchSpy).toHaveBeenCalledTimes(1), { timeout: 2500 })
+    const started = Date.now()
+    await searchFor('滤芯')
+    await waitFor(() => expect(searchSpy).toHaveBeenCalledTimes(2))
+    expect(Date.now() - started).toBeLessThan(900)
+  })
+
+  it('waits for the first readiness check, so its search gets an answer', async () => {
+    let answer: (value: api.Readiness) => void = () => undefined
+    vi.spyOn(api, 'fetchReadiness').mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve
+      }),
+    )
+    const askSpy = mockAsk((handlers) => handlers.onResults(response))
+    renderResults('更换滤芯')
+    window.setTimeout(
+      () => answer({ status: 'ready', model_loaded: true, answers_available: true }),
+      100,
+    )
+    await waitFor(() => expect(askSpy).toHaveBeenCalledOnce())
+  })
+})
+
 describe('who is searching', () => {
   it('offers an administrator the owner and visibility filters', async () => {
     vi.spyOn(api, 'listUsers').mockResolvedValue([])
@@ -688,13 +718,15 @@ describe('answers', () => {
     expect(api.search).toHaveBeenCalledTimes(2)
   })
 
-  it('never waits for the readiness check before searching', async () => {
+  it('waits no more than a moment for a readiness check that never answers', async () => {
     vi.spyOn(api, 'fetchReadiness').mockReturnValue(new Promise(() => undefined))
     const askSpy = answering()
     const searchSpy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderApp()
     await searchFor('更换滤芯')
-    await waitFor(() => expect(screen.getAllByTestId('result-card')).toHaveLength(2))
+    await waitFor(() => expect(screen.getAllByTestId('result-card')).toHaveLength(2), {
+      timeout: 2500,
+    })
     expect(searchSpy).toHaveBeenCalledOnce()
     expect(askSpy).not.toHaveBeenCalled()
   })

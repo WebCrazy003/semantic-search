@@ -33,7 +33,9 @@ describe('the document manager', () => {
     )
     renderApp('/drive')
     const table = await screen.findByRole('table')
-    const rows = await within(table).findAllByRole('row')
+    // The table is there before its rows: wait for the last file to arrive.
+    await within(table).findByText('scan.pdf', {}, { timeout: 3000 })
+    const rows = within(table).getAllByRole('row')
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining('Name'),
       expect.stringContaining('Manuals'),
@@ -140,8 +142,10 @@ describe('the document manager', () => {
     asUser()
     givenDrive([], [folder])
     renderApp('/drive')
-    await userEvent.click(await screen.findByRole('button', { name: 'Manuals' }))
-    await waitFor(() => expect(api.listDrive).toHaveBeenLastCalledWith('me', 'folder-1'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Manuals' }, { timeout: 3000 }))
+    await waitFor(() => expect(api.listDrive).toHaveBeenLastCalledWith('me', 'folder-1'), {
+      timeout: 3000,
+    })
   })
 
   it('deletes a folder only after asking', async () => {

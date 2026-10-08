@@ -42,6 +42,8 @@ export { keyOf } from './resultKey'
 
 /** How long a "no answer model" reply is trusted before a search refreshes it. */
 const READINESS_RECHECK_MS = 30_000
+/** How long the first search waits for the first "can the backend answer?" check. */
+const FIRST_CHECK_WAIT_MS = 1000
 
 interface SearchContextValue {
   query: string
@@ -95,17 +97,23 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   // what is known and, when a "no" (or nothing) is older than 30 s, refreshes it in the
   // background for the next search. Starting the model later needs no reload, and a
   // model that stops is noticed from the ask itself (see markUnavailable).
+  //
+  // The one exception is the very first check: a results link opened in a new tab
+  // searches at once, before the check can answer, and would never get an answer box.
+  // That first search waits for it, but at most FIRST_CHECK_WAIT_MS.
   const readinessRef = useRef({ available: false, checkedAt: 0, pending: false })
+  const firstCheck = useRef<Promise<void> | null>(null)
 
   const refreshReadiness = useCallback(() => {
     if (readinessRef.current.pending) return
     readinessRef.current = { ...readinessRef.current, pending: true }
-    void fetchReadiness()
+    const check = fetchReadiness()
       .then((readiness) => readiness?.answers_available === true)
       .catch(() => false)
       .then((available) => {
         readinessRef.current = { available, checkedAt: Date.now(), pending: false }
       })
+    if (readinessRef.current.checkedAt === 0) firstCheck.current = check
   }, [])
 
   const markUnavailable = useCallback(() => {
@@ -118,10 +126,30 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   }, [answersEnabled, refreshReadiness])
 
   // Leaving the signed-in app (logging out) must not leave a model writing.
-  useEffect(() => () => controllerRef.current?.abort(), [])
+  // A run still deciding whether to ask is superseded too, so it never searches after.
+  useEffect(
+    () => () => {
+      controllerRef.current?.abort()
+      runRef.current++
+    },
+    [],
+  )
 
-  const shouldAsk = useCallback((): boolean => {
+  const shouldAsk = useCallback(async (): Promise<boolean> => {
     if (!answersEnabled) return false
+    const first = firstCheck.current
+    if (first) {
+      // Once: a check that never answers must not slow every later search.
+      firstCheck.current = null
+      let timer = 0
+      await Promise.race([
+        first,
+        new Promise((resolve) => {
+          timer = window.setTimeout(resolve, FIRST_CHECK_WAIT_MS)
+        }),
+      ])
+      window.clearTimeout(timer)
+    }
     const known = readinessRef.current
     if (known.available) return true
     if (Date.now() - known.checkedAt >= READINESS_RECHECK_MS) refreshReadiness()
@@ -159,7 +187,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        if (shouldAsk()) {
+        const asking = await shouldAsk()
+        if (!current()) return
+        if (asking) {
           let gotResults = false
           try {
             await ask(
