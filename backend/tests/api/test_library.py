@@ -154,7 +154,7 @@ class TestUpload:
     ) -> None:
         """The server indexes what it was sent (2026-10-08 spec §3.3); a later run has
         nothing left to do for it."""
-        for path in container.settings.pdf_directory.glob("*.pdf"):
+        for path in _uploads(container).glob("*.pdf"):
             path.unlink()
         payload = (corpus_dir / "manual_zh.pdf").read_bytes()
         response = client.post(
@@ -168,7 +168,7 @@ class TestUpload:
 
 
 class TestRemoveOneDocument:
-    def test_its_passages_and_record_go_but_the_file_stays(
+    def test_its_passages_record_and_file_go(
         self, client: TestClient, container
     ) -> None:
         _index(client)
@@ -182,16 +182,16 @@ class TestRemoveOneDocument:
         body = response.json()
         assert body["filename"] == "manual_zh.pdf"
         assert body["chunks_removed"] == document["chunks"]
-        assert body["file_kept"] is True
+        assert body["file_kept"] is False
 
         assert container.qdrant.count_points() == before - document["chunks"]
         assert "manual_zh.pdf" not in [d["filename"] for d in client.get("/api/documents").json()]
-        assert (container.settings.pdf_directory / "manual_zh.pdf").exists()
+        assert not (_uploads(container) / "manual_zh.pdf").exists()
 
     def test_removing_an_unknown_document_is_a_404(self, client: TestClient) -> None:
         assert client.delete("/api/documents/" + "f" * 64).status_code == 404
 
-    def test_a_removed_document_returns_on_the_next_run(
+    def test_a_removed_document_stays_gone_after_the_next_run(
         self, client: TestClient, container
     ) -> None:
         _index(client)
@@ -200,7 +200,7 @@ class TestRemoveOneDocument:
         )
         client.delete(f"/api/documents/{document['document_id']}")
         _index(client)
-        assert "manual_zh.pdf" in [d["filename"] for d in client.get("/api/documents").json()]
+        assert "manual_zh.pdf" not in [d["filename"] for d in client.get("/api/documents").json()]
 
 
 class TestClearIndex:
@@ -221,7 +221,7 @@ class TestClearIndex:
     def test_the_pdf_files_are_left_alone(self, client: TestClient, container) -> None:
         _index(client)
         client.post("/api/index/clear")
-        assert list(container.settings.pdf_directory.glob("*.pdf"))
+        assert list(_uploads(container).glob("*.pdf"))
 
     def test_searching_after_a_clear_returns_nothing(self, client: TestClient) -> None:
         _index(client)
@@ -350,7 +350,7 @@ class TestOpeningTheSourceFile:
     ) -> None:
         import shutil
 
-        shutil.copy(docx_dir / "manual_ko.docx", container.settings.pdf_directory)
+        shutil.copy(docx_dir / "manual_ko.docx", _uploads(container))
         _index(client)
         document = next(
             d for d in client.get("/api/documents").json() if d["filename"] == "manual_ko.docx"
@@ -382,11 +382,11 @@ class TestOpeningTheSourceFile:
         document = next(
             d for d in client.get("/api/documents").json() if d["filename"] == "manual_zh.pdf"
         )
-        (container.settings.pdf_directory / "manual_zh.pdf").unlink()
+        (_uploads(container) / "manual_zh.pdf").unlink()
 
         response = client.get(f"/api/documents/{document['document_id']}/file")
         assert response.status_code == 404
-        assert "no longer in any folder in the library" in response.json()["detail"]
+        assert "no longer on disk" in response.json()["detail"]
 
     def test_a_record_pointing_outside_the_folder_is_refused(
         self, client: TestClient, container, tmp_path

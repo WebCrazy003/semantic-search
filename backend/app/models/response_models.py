@@ -100,8 +100,8 @@ class IndexStatusResponse(BaseModel):
     status: Literal["idle", "running", "completed", "failed"]
     job_id: str | None = None
     trigger: str = "scan"
-    # library, or the user id whose uploads are being indexed
-    scope: str = "library"
+    # "all" for every user's uploads, or the user id whose uploads are being indexed
+    scope: str = "all"
     directory: str | None = None
     current_file: str | None = None
     current_stage: str | None = None
@@ -146,9 +146,11 @@ class DocumentSummary(BaseModel):
     pages_approximate: bool = False
     visibility: str = "private"
     is_mine: bool = False
-    # Only for admins; None for everyone else. owner_username is None for the library.
+    # Only for admins; None for everyone else.
     owner_id: str | None = None
     owner_username: str | None = None
+    # Who made it public: for its owner and admins, and only while it is public.
+    published_by_username: str | None = None
 
 
 class JobSummary(BaseModel):
@@ -169,7 +171,7 @@ class JobSummary(BaseModel):
     deleted: int = 0
     chunks: int = 0
     failures: list[dict[str, str]] = []
-    scope: str = "library"
+    scope: str = "all"
     started_by_username: str | None = None
 
 
@@ -193,28 +195,11 @@ class UploadResponse(BaseModel):
     indexing: Literal["started", "queued"] | None = None
 
 
-class FolderSummary(BaseModel):
-    path: str
-    added_at: datetime
-    exists: bool
-    readable: bool
-    document_count: int = 0  # every supported file on disk, subfolders included
-    pdf_count: int = 0  # deprecated: PDFs only, kept for one release
-    indexed_documents: int = 0
-    is_default: bool = False
-
-
-class RemovedFolderResponse(BaseModel):
-    path: str
-    documents_unindexed: int
-    files_kept: bool = True
-
-
 class RemovedDocumentResponse(BaseModel):
     document_id: str
     filename: str
     chunks_removed: int
-    file_kept: bool = True
+    file_kept: bool = False
 
 
 class ClearIndexResponse(BaseModel):
@@ -479,9 +464,6 @@ class DriveFileView(BaseModel):
     pages_approximate: bool = False
     chunks: int | None = None
     visibility: str | None = None
-    # Library files that live in a folder registered from elsewhere on the machine:
-    # DocSage never deletes those, only unindexes them.
-    external: bool = False
 
 
 class DriveCrumb(BaseModel):

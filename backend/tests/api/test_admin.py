@@ -150,13 +150,13 @@ class TestExtraction:
         assert body["pages_approximate"] is True
 
     def test_it_notices_a_file_that_changed_since_indexing(
-        self, client: TestClient, api_documents_dir: Path
+        self, client: TestClient, admin_dir: Path
     ) -> None:
         document = _indexed(client)
         before = client.get(f"/api/admin/documents/{document['document_id']}/extraction").json()
         assert before["file_hash_matches_manifest"] is True
 
-        path = api_documents_dir / "manual_zh.pdf"
+        path = admin_dir / "manual_zh.pdf"
         path.write_bytes(path.read_bytes() + b"\n%% edited\n")
 
         after = client.get(f"/api/admin/documents/{document['document_id']}/extraction").json()
@@ -166,9 +166,9 @@ class TestExtraction:
         response = client.get("/api/admin/documents/nope/extraction")
         assert response.status_code == 404
 
-    def test_a_deleted_file_is_410(self, client: TestClient, api_documents_dir: Path) -> None:
+    def test_a_deleted_file_is_410(self, client: TestClient, admin_dir: Path) -> None:
         document = _indexed(client)
-        (api_documents_dir / "manual_zh.pdf").unlink()
+        (admin_dir / "manual_zh.pdf").unlink()
 
         response = client.get(f"/api/admin/documents/{document['document_id']}/extraction")
         assert response.status_code == 410

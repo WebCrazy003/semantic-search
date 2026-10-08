@@ -57,7 +57,7 @@ export interface IndexStatus {
   status: 'idle' | 'running' | 'completed' | 'failed'
   job_id: string | null
   trigger: string
-  /** 'library', or the user id whose uploads are being indexed. */
+  /** 'all' for every user's uploads, or the user id whose uploads are being indexed. */
   scope?: string
   directory: string | null
   current_file: string | null
@@ -114,10 +114,12 @@ export interface DocumentSummary {
   pages_approximate?: boolean
   visibility?: Visibility
   is_mine?: boolean
-  /** Admins only: a user id or 'library'. */
+  /** Admins only: the uploader's user id. */
   owner_id?: string | null
-  /** Admins only: null for the library. */
+  /** Admins only. */
   owner_username?: string | null
+  /** Who made it public: for its owner and admins, while it is public. */
+  published_by_username?: string | null
 }
 
 export interface JobSummary {
@@ -138,24 +140,6 @@ export interface JobSummary {
   failures: { filename: string; error_type: string; error_message: string }[]
   scope?: string
   started_by_username?: string | null
-}
-
-export interface FolderSummary {
-  path: string
-  added_at: string
-  exists: boolean
-  readable: boolean
-  document_count: number
-  /** Deprecated: PDFs only. Use document_count. */
-  pdf_count?: number
-  indexed_documents: number
-  is_default: boolean
-}
-
-export interface RemovedFolder {
-  path: string
-  documents_unindexed: number
-  files_kept: boolean
 }
 
 export interface RejectedUpload {
@@ -205,7 +189,7 @@ export interface SearchParams {
   documentId?: string
   /** For regular users: their own documents, public ones, or both. */
   scope?: SearchScope
-  /** Admins only. A user id, or 'library'. */
+  /** Admins only. A user id. */
   ownerId?: string
   /** Admins only. */
   visibility?: Visibility
@@ -525,13 +509,13 @@ export async function ask(
 }
 
 export async function startIndexing(
-  options: { directory?: string; force?: boolean; trigger?: 'scan' | 'upload' } = {},
+  options: { force?: boolean; trigger?: 'scan' | 'upload' } = {},
 ): Promise<IndexStarted> {
-  const { directory, force = false, trigger = 'scan' } = options
+  const { force = false, trigger = 'scan' } = options
   const response = await send('/api/index', {
     method: 'POST',
     headers: JSON_HEADERS,
-    body: JSON.stringify({ ...(directory ? { directory } : {}), force, trigger }),
+    body: JSON.stringify({ force, trigger }),
   })
 
   const body = await response.json().catch(() => null)
@@ -627,22 +611,6 @@ function dispositionName(response: Response): string | null {
     }
   }
   return /filename="?([^";]+)"?/i.exec(header)?.[1] ?? null
-}
-
-export function getFolders(): Promise<FolderSummary[]> {
-  return call<FolderSummary[]>('/api/folders')
-}
-
-export function addFolder(path: string): Promise<FolderSummary> {
-  return call<FolderSummary>('/api/folders', {
-    method: 'POST',
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ path }),
-  })
-}
-
-export function removeFolder(path: string): Promise<RemovedFolder> {
-  return call<RemovedFolder>(`/api/folders?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
 }
 
 // ------------------------------------------------------------------ admin
@@ -951,7 +919,7 @@ export function setVisibilityInBulk(
   documentIds: string[],
   visibility: Visibility,
 ): Promise<{ updated: number; not_found: string[] }> {
-  return post('/api/admin/documents/visibility', { document_ids: documentIds, visibility })
+  return post('/api/documents/visibility', { document_ids: documentIds, visibility })
 }
 
 export function getAuthSettings(): Promise<{ registration_open: boolean }> {
@@ -967,7 +935,7 @@ export function setRegistrationOpen(open: boolean): Promise<{ registration_open:
 }
 
 // ------------------------------------------------------------ document manager
-// Folders live in the database; a tree is 'me', or for an admin 'library' or a user id
+// Folders live in the database; a tree is 'me', or for an admin a user id
 // (spec 2026-10-08 §3.5).
 
 export type DriveFileState =
@@ -1001,7 +969,6 @@ export interface DriveFile {
   pages_approximate: boolean
   chunks: number | null
   visibility: Visibility | null
-  external: boolean
 }
 
 export interface DriveListing {
@@ -1057,7 +1024,7 @@ export function deleteDriveFolder(folderId: string): Promise<void> {
   return call<void>(`/api/drive/folders/${folderId}`, { method: 'DELETE' })
 }
 
-/** Delete files, indexed or not. Library files are only removed from search. */
+/** Delete files, indexed or not: out of search and off the disk. */
 export function deleteDriveFiles(tree: string, fileIds: string[]): Promise<void> {
   return call<void>('/api/drive/files/delete', {
     method: 'POST',

@@ -145,7 +145,7 @@ class DocumentRecord:
     error_message: str | None
     indexed_at: datetime
     alt_filepaths: list[str] = field(default_factory=list)
-    owner_id: str = "library"  # a user id, or "library"
+    owner_id: str = "library"  # a user id; "library" only until library_migration runs
     visibility: str = "private"  # private | public
 
     @property
@@ -156,7 +156,8 @@ class DocumentRecord:
 
 @dataclass(frozen=True)
 class FolderRecord:
-    """A folder the user asked to index in place. Its PDFs are never copied."""
+    """A folder registered to be indexed in place, before every document was a user's.
+    Only library_migration reads these now, to copy their files to the first admin."""
 
     path: str
     added_at: datetime
@@ -182,7 +183,7 @@ class JobRecord:
     chunks: int = 0
     failures: list[dict[str, str]] = field(default_factory=list)
     started_by: str | None = None  # user id; None for runs from before accounts
-    scope: str = "library"  # library, or the user id whose folder was indexed
+    scope: str = "library"  # "all", or the user id whose folder was indexed; "library" before
 
 
 @dataclass(frozen=True)

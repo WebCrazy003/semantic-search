@@ -1,10 +1,10 @@
 # backend/app/services/ownership.py
 """Who owns a file, decided by where it lives.
 
-Every user's uploads sit in PDF_DIRECTORY/users/<user_id>/. Everything else — files put
-in the documents folder by hand, registered folders, and every document indexed before
-accounts existed — belongs to the library. Because the owner is a function of the path,
-clearing the index, rebuilding the manifest or rescanning never changes who owns what.
+Every document is a user's upload, kept in PDF_DIRECTORY/users/<user_id>/. Because the
+owner is a function of the path, clearing the index, rebuilding the manifest or
+rescanning never changes who owns what. A file anywhere else belongs to nobody and is
+never indexed.
 """
 
 from __future__ import annotations
@@ -14,8 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+# The owner of documents from before every document was a user's: files put in the
+# documents folder by hand, and everything indexed before accounts existed. The app hands
+# them to the first admin (library_migration.py) and never gives a document this owner
+# again; only an indexer built without accounts (unit tests) still does.
 LIBRARY = "library"
 USERS_DIRNAME = "users"
+
+# The scope of an indexing run over every user's uploads.
+EVERYONE = "all"
 
 PUBLIC = "public"
 PRIVATE = "private"
@@ -30,16 +37,15 @@ def user_folder(documents_dir: Path, user_id: str) -> Path:
 
 
 def owner_for(path: Path, documents_dir: Path) -> str | None:
-    """The owner of a file: a user id, LIBRARY, or None when it belongs to nobody.
+    """The owner of a file: a user id, or None when it belongs to nobody.
 
-    None is a file sitting directly in users/ rather than inside a user's folder. The
-    users/ tree is reserved for uploads, so such a file is skipped, not handed to the
-    library.
+    Nobody owns a file outside users/, or one sitting directly in users/ rather than
+    inside a user's folder.
     """
     try:
         relative = path.relative_to(users_root(documents_dir))
     except ValueError:
-        return LIBRARY
+        return None
     return relative.parts[0] if len(relative.parts) >= 2 else None
 
 

@@ -58,7 +58,7 @@ interface SearchContextValue {
   /** Regular users: their own documents, public ones, or both. */
   scope: SearchScope
   setScope: (scope: SearchScope) => void
-  /** Admins: '' for everyone, 'library', or a user id. */
+  /** Admins: '' for everyone, or a user id. */
   owner: string
   setOwner: (owner: string) => void
   /** Admins: '' for either. */

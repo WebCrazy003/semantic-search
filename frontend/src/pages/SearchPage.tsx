@@ -175,7 +175,6 @@ export function SearchPage() {
                 popupMatchSelectWidth={false}
                 options={[
                   { value: '', label: 'Everyone' },
-                  { value: 'library', label: 'Library' },
                   ...owners,
                 ]}
               />

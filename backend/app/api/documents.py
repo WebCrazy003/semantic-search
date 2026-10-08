@@ -18,12 +18,19 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 
-from app.api.guards import apply_visibility, owned_or_404, readable_or_404, remove_document
-from app.auth import active_user, admin_user, reader
+from app.api.guards import (
+    apply_visibility,
+    file_on_disk,
+    owned_or_404,
+    readable_or_404,
+    remove_document,
+)
+from app.auth import active_user, reader
 from app.deps import Container, get_container
 from app.logging_config import get_logger
-from app.models.request_models import VisibilityRequest
+from app.models.request_models import BulkVisibilityRequest, VisibilityRequest
 from app.models.response_models import (
+    BulkVisibilityResponse,
     DocumentSummary,
     PassageResponse,
     RejectedUpload,
@@ -37,7 +44,7 @@ from app.services.docx_service import DOCX_MEDIA_TYPE, OLE_MAGIC, ZIP_MAGIC
 from app.services.drive_store import DriveError, DriveFile
 from app.services.extractors import file_type_for
 from app.services.manifest_service import DocumentRecord
-from app.services.ownership import LIBRARY, user_folder
+from app.services.ownership import PUBLIC, user_folder
 
 logger = get_logger("api.documents")
 router = APIRouter(tags=["documents"])
@@ -56,7 +63,7 @@ _UNSAFE = re.compile(r"[^\w.\- ()　-鿿가-힯]", re.UNICODE)
 @router.get("/documents", response_model=list[DocumentSummary])
 def list_documents(
     status: str | None = Query(default=None, description="indexed, skipped, failed, unsupported"),
-    owner_id: str | None = Query(default=None, description="Admin only: a user id, or library"),
+    owner_id: str | None = Query(default=None, description="Admin only: a user id"),
     visibility: str | None = Query(default=None, description="Admin only: public or private"),
     user: User = Depends(active_user),
     container: Container = Depends(get_container),
@@ -69,16 +76,18 @@ def list_documents(
     """
     if user.is_admin:
         records = container.manifest.all_documents(owner_id=owner_id, visibility=visibility)
-        names = container.access.usernames()
     else:
         records = container.manifest.all_documents(readable_by=user.user_id)
-        names = {}
     if status is not None:
         records = [record for record in records if record.status == status]
-    return [_summary(record, user, names) for record in records]
+    names = container.access.usernames()
+    publishers = container.access.publishers()
+    return [_summary(record, user, names, publishers) for record in records]
 
 
-def _summary(record: DocumentRecord, user: User, names: dict[str, str]) -> DocumentSummary:
+def _summary(
+    record: DocumentRecord, user: User, names: dict[str, str], publishers: dict[str, str]
+) -> DocumentSummary:
     mine = record.owner_id == user.user_id
     # Another user's public document shows its content, never where it lives or who
     # uploaded it.
@@ -104,8 +113,11 @@ def _summary(record: DocumentRecord, user: User, names: dict[str, str]) -> Docum
         visibility=record.visibility,
         is_mine=mine,
         owner_id=record.owner_id if user.is_admin else None,
-        owner_username=(
-            names.get(record.owner_id) if user.is_admin and record.owner_id != LIBRARY else None
+        owner_username=names.get(record.owner_id) if user.is_admin else None,
+        published_by_username=(
+            names.get(publishers.get(record.document_id, ""))
+            if private_details and record.visibility == PUBLIC
+            else None
         ),
     )
 
@@ -185,33 +197,21 @@ def get_document_file(
     """Serve one indexed file: a PDF opens in the browser at the matching page, and a
     Word file, which browsers cannot show, downloads.
 
-    Only files that are in the manifest and still inside the configured documents
-    folder are served: the id is not a path, and the resolved path is checked against
-    the folder, so no request can read anything else on the machine.
+    Only files that are in the manifest and still inside their owner's upload folder
+    are served: the id is not a path, and the resolved path is checked against the
+    folder, so no request can read anything else on the machine.
     """
     record = readable_or_404(container, user, document_id)
 
-    # The allow-list is the library: the documents folder plus every folder the user
-    # registered. A manifest row on its own is not enough to read a file.
-    roots = [container.settings.pdf_directory.resolve()]
-    roots.extend(Path(folder.path).resolve() for folder in container.manifest.folders())
-
-    for candidate in record.known_paths:
-        path = Path(candidate).resolve()
-        if any(path.is_relative_to(root) for root in roots) and path.is_file():
-            media_type = container.extractors.media_type_for(path)
-            return FileResponse(
-                path,
-                media_type=media_type,
-                filename=record.filename,
-                content_disposition_type=(
-                    "attachment" if media_type == DOCX_MEDIA_TYPE else "inline"
-                ),
-            )
-
-    raise HTTPException(
-        status_code=404,
-        detail=f"{record.filename} is no longer in any folder in the library",
+    path = file_on_disk(container, record)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"{record.filename} is no longer on disk")
+    media_type = container.extractors.media_type_for(path)
+    return FileResponse(
+        path,
+        media_type=media_type,
+        filename=record.filename,
+        content_disposition_type="attachment" if media_type == DOCX_MEDIA_TYPE else "inline",
     )
 
 
@@ -247,11 +247,10 @@ def delete_document(
     user: User = Depends(active_user),
     container: Container = Depends(get_container),
 ) -> RemovedDocumentResponse:
-    """Remove one document from the index.
+    """Remove one document from the index, and its uploaded file from disk.
 
-    A library file is left on disk, so a later scan finds it again. A user's upload is
-    deleted with it: it is a copy the app made. Only the owner and admins may do this;
-    for anyone else the document does not exist, public or not.
+    Only the owner and admins may do this; for anyone else the document does not exist,
+    public or not.
 
     Refused while a run is in progress, because the sweep at the end of that run owns
     the same rows.
@@ -262,12 +261,9 @@ def delete_document(
         raise HTTPException(status_code=409, detail="An indexing run is in progress")
     record = owned_or_404(container, user, document_id)
 
-    _, kept = remove_document(container, record)
+    remove_document(container, record)
     return RemovedDocumentResponse(
-        document_id=record.document_id,
-        filename=record.filename,
-        chunks_removed=record.chunks,
-        file_kept=kept,
+        document_id=record.document_id, filename=record.filename, chunks_removed=record.chunks
     )
 
 
@@ -275,14 +271,26 @@ def delete_document(
 def set_document_visibility(
     document_id: str,
     body: VisibilityRequest,
-    admin: User = Depends(admin_user),
+    user: User = Depends(active_user),
     container: Container = Depends(get_container),
 ) -> VisibilityResponse:
-    """Make a document public, so every user can find it, or private again."""
-    updated, _ = apply_visibility(container, [document_id], body.visibility, admin)
+    """Make a document public, so anyone can find it, or private again. Its owner may,
+    and an admin; for anyone else it does not exist."""
+    updated, _ = apply_visibility(container, [document_id], body.visibility, user)
     if not updated:
         raise HTTPException(status_code=404, detail="No such document")
     return VisibilityResponse(document_id=document_id, visibility=body.visibility)
+
+
+@router.post("/documents/visibility", response_model=BulkVisibilityResponse)
+def bulk_visibility(
+    body: BulkVisibilityRequest,
+    user: User = Depends(active_user),
+    container: Container = Depends(get_container),
+) -> BulkVisibilityResponse:
+    """Several at once. Documents the caller may not change are reported as not found."""
+    updated, unknown = apply_visibility(container, body.document_ids, body.visibility, user)
+    return BulkVisibilityResponse(updated=len(updated), not_found=unknown)
 
 
 def _header_problem(suffix: str, head: bytes) -> str | None:

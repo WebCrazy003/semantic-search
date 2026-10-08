@@ -213,6 +213,53 @@ class QdrantService:
             wait=True,
         )
 
+    def rekey_document(
+        self, old_id: str, new_id: str, owner_id: str, filepath: str, filename: str
+    ) -> int:
+        """Give one document's passages a new id, owner and place, keeping their vectors.
+
+        Point ids derive from the document id, so the points are written again under
+        their new ids and the old ones deleted: nothing is embedded again. Returns how
+        many passages moved.
+        """
+        moved = 0
+        offset = None
+        condition = models.Filter(must=[_match("document_id", old_id)])
+        while True:
+            points, offset = self._client.scroll(
+                collection_name=self._collection,
+                scroll_filter=condition,
+                limit=self._upsert_batch,
+                offset=offset,
+                with_payload=True,
+                with_vectors=True,
+            )
+            if points:
+                self._client.upsert(
+                    collection_name=self._collection,
+                    points=[
+                        models.PointStruct(
+                            id=point_id_for(new_id, int(point.payload["chunk_index"])),
+                            vector=point.vector,
+                            payload={
+                                **point.payload,
+                                "document_id": new_id,
+                                "owner_id": owner_id,
+                                "filepath": filepath,
+                                "filename": filename,
+                                "folder": str(Path(filepath).parent),
+                            },
+                        )
+                        for point in points
+                    ],
+                    wait=True,
+                )
+                moved += len(points)
+            if offset is None:
+                break
+        self.delete_document(old_id)
+        return moved
+
     def assign_unowned_to_library(self) -> int:
         """Give points indexed before accounts existed an owner and a visibility.
 

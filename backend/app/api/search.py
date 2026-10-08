@@ -13,7 +13,6 @@ from app.models.request_models import SearchRequest
 from app.models.response_models import SearchResponse
 from app.services.access_store import User
 from app.services.answer_service import Event
-from app.services.ownership import LIBRARY
 
 router = APIRouter(tags=["search"])
 
@@ -75,7 +74,7 @@ def _search_as(
     for hit in response.results:
         hit.is_mine = user is not None and hit.owner_id == user.user_id
         if is_admin:
-            hit.owner_username = names.get(hit.owner_id or "") if hit.owner_id != LIBRARY else None
+            hit.owner_username = names.get(hit.owner_id or "")
         else:
             # Everyone else sees "Public", never who uploaded it or where it is stored.
             hit.owner_id = None

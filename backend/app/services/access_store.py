@@ -459,6 +459,13 @@ class AccessStore:
             for row in self._execute("SELECT document_id FROM public_documents")
         }
 
+    def publishers(self) -> dict[str, str]:
+        """Who made each public document public: document id to user id."""
+        return {
+            str(row["document_id"]): str(row["made_public_by"])
+            for row in self._execute("SELECT document_id, made_public_by FROM public_documents")
+        }
+
     def is_public(self, document_id: str) -> bool:
         row = self._execute(
             "SELECT 1 FROM public_documents WHERE document_id = ?", (document_id,)

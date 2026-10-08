@@ -32,21 +32,14 @@ class SearchRequest(BaseModel):
 
 
 class IndexRequest(BaseModel):
-    directory: str | None = Field(
-        default=None, description="Defaults to PDF_DIRECTORY when omitted"
-    )
     force: bool = Field(default=False, description="Re-index files that are unchanged")
     trigger: Literal["scan", "upload"] = Field(
         default="scan", description="Labels the run in the job history"
     )
     scope: str | None = Field(
         default=None,
-        description="Admin only: a user id, to re-index just that user's uploads",
+        description="Admin only: a user id, to index just that user's uploads, not everyone's",
     )
-
-
-class AddFolderRequest(BaseModel):
-    path: str = Field(min_length=1, description="Absolute path of a folder to index in place")
 
 
 # ------------------------------------------------------------------ accounts
@@ -105,7 +98,7 @@ class AuthSettingsRequest(BaseModel):
 
 
 # ------------------------------------------------------------ document manager
-# `tree` is "me", or for an admin a user id or "library" (2026-10-08 spec §3.5).
+# `tree` is "me", or for an admin a user id (2026-10-08 spec §3.5).
 
 
 class CreateFolderRequest(BaseModel):

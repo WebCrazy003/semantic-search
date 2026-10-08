@@ -16,10 +16,10 @@ what you want when you are chasing an extraction bug.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.api.guards import file_on_disk
 from app.deps import Container, get_container
 from app.logging_config import get_logger
 from app.models.response_models import (
@@ -80,10 +80,10 @@ _PAYLOAD_FIELDS: list[PayloadField] = [
                  description="Detected document language; a label only, never a search filter"),
     PayloadField(name="title", type="text", description="The document's title, when it has one"),
     PayloadField(name="folder", type="keyword",
-                 description="The library folder the file was found in"),
+                 description="The folder the file was found in"),
     PayloadField(name="kind", type="keyword", description="text, table or heading"),
     PayloadField(name="owner_id", type="keyword", indexed=True,
-                 description="Who owns the document: a user id, or library"),
+                 description="Who owns the document: the uploader's user id"),
     PayloadField(name="visibility", type="keyword", indexed=True,
                  description="private (owner and admins) or public (every user)"),
 ]
@@ -160,12 +160,9 @@ def document_extraction(
     if record is None:
         raise HTTPException(status_code=404, detail="No such document")
 
-    path = _resolve(record.known_paths, container)
+    path = file_on_disk(container, record)
     if path is None:
-        raise HTTPException(
-            status_code=410,
-            detail=f"{record.filename} is no longer in any folder in the library",
-        )
+        raise HTTPException(status_code=410, detail=f"{record.filename} is no longer on disk")
 
     extractor = container.extractors.for_path(path)
     if extractor is None:
@@ -274,21 +271,6 @@ def document_chunks(
         limit=limit,
         chunks=chunks,
     )
-
-
-def _resolve(known_paths: list[str], container: Container) -> Path | None:
-    """The first known path that is inside the library and still on disk.
-
-    The same allow-list as GET /documents/{id}/file: a manifest row alone is not
-    permission to read a file, so nothing outside the registered folders is opened.
-    """
-    roots = [container.settings.pdf_directory.resolve()]
-    roots.extend(Path(folder.path).resolve() for folder in container.manifest.folders())
-    for candidate in known_paths:
-        path = Path(candidate).resolve()
-        if any(path.is_relative_to(root) for root in roots) and path.is_file():
-            return path
-    return None
 
 
 def _overlap(previous: str, current: str, heading: str | None = None) -> tuple[int, int]:

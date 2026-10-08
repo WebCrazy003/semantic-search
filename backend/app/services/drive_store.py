@@ -5,7 +5,7 @@ Kept in data/access.db, beside the accounts, because like them it cannot be reco
 the manifest is a cache that a rebuild or "Clear the index" empties, and files never
 move on disk. A move here is one UPDATE.
 
-A tree is one owner's files: a user id, or "library". A file is keyed by its path on
+A tree is one user's files, named by their user id. A file is keyed by its path on
 disk, not its document id, because the path exists from the moment of upload and never
 changes, while the id comes later and changes whenever the content does.
 """
@@ -345,6 +345,30 @@ class DriveStore:
                     "UPDATE drive_files SET folder_id = ? WHERE file_id = ? AND tree = ?",
                     (to, file_id, tree),
                 )
+
+    def adopt(self, old_tree: str, new_tree: str, moved: dict[str, str], home_name: str) -> None:
+        """Hand one tree's folders and files to another, all inside a new folder there, so
+        no name clashes with one already in it.
+
+        `moved` maps each file's old path to its new one. Every file in it ends up in the
+        new tree, in the folder it was in or in the new folder; a row of the old tree
+        whose file is not in it is dropped.
+        """
+        with self._transaction():
+            folders = self.folders(old_tree)
+            if not folders and not moved:
+                self._write("DELETE FROM drive_files WHERE tree = ?", (old_tree,))
+                return
+            home = self.create_folder(new_tree, None, self._free_name(new_tree, None, home_name))
+            self._write(
+                "UPDATE drive_folders SET parent_id = ? WHERE tree = ? AND parent_id IS NULL",
+                (home.folder_id, old_tree),
+            )
+            self._write("UPDATE drive_folders SET tree = ? WHERE tree = ?", (new_tree, old_tree))
+            placed = {file.path: file.folder_id for file in self.files(old_tree)}
+            self._write("DELETE FROM drive_files WHERE tree = ?", (old_tree,))
+            for old, new in moved.items():
+                self.add(new_tree, new, placed.get(old) or home.folder_id)
 
     def forget_tree(self, tree: str) -> None:
         """Everything of one tree: its folders and every file's placement."""

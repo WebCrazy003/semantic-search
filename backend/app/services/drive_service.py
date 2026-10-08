@@ -18,7 +18,7 @@ from app.services.drive_store import DriveFile, DriveStore
 from app.services.extractors import ExtractorRegistry
 from app.services.indexing_service import IndexingService, RunRequest
 from app.services.manifest_service import DocumentRecord, ManifestService
-from app.services.ownership import LIBRARY, user_folder, users_root
+from app.services.ownership import user_folder
 
 # What a file in a run that has not finished is doing.
 _IN_RUN = {"waiting", "indexing"}
@@ -53,44 +53,21 @@ class DriveService:
 
     def folder_on_disk(self, tree: str) -> Path:
         """Where a tree's uploads are saved."""
-        if tree == LIBRARY:
-            return self._documents_dir
         return user_folder(self._documents_dir, tree)
 
-    def roots(self, tree: str) -> list[Path]:
-        if tree != LIBRARY:
-            return [user_folder(self._documents_dir, tree)]
-        roots = [self._documents_dir]
-        for record in self._manifest.folders():
-            path = Path(record.path)
-            if path not in roots:
-                roots.append(path)
-        return roots
-
-    def paths_on_disk(self, tree: str) -> tuple[list[str], list[Path]]:
-        """The tree's files, and the roots that could not be read (an unplugged drive)."""
-        users = users_root(self._documents_dir)
+    def paths_on_disk(self, tree: str) -> list[str]:
+        """The tree's files: every supported file in its owner's upload folder."""
         found: set[str] = set()
-        missing: list[Path] = []
-        for root in self.roots(tree):
-            if not root.is_dir():
-                missing.append(root)
-                continue
-            for folder, subfolders, names in os.walk(root):
-                if tree == LIBRARY and Path(folder) == users:
-                    subfolders.clear()  # users' uploads are their trees, not the library's
-                    continue
-                for name in names:
-                    path = Path(folder) / name
-                    if self._extractors.supports(path):
-                        found.add(str(path))
-        return sorted(found), missing
+        for folder, _, names in os.walk(self.folder_on_disk(tree)):
+            for name in names:
+                path = Path(folder) / name
+                if self._extractors.supports(path):
+                    found.add(str(path))
+        return sorted(found)
 
     def sync(self, tree: str) -> list[DriveFile]:
-        """The tree's files as they are on disk now, each with its row. Rows under a root
-        that cannot be read are kept: their folders cannot be rebuilt."""
-        paths, missing = self.paths_on_disk(tree)
-        return self.store.sync(tree, paths, keep_under=missing)
+        """The tree's files as they are on disk now, each with its row."""
+        return self.store.sync(tree, self.paths_on_disk(tree))
 
     def records_by_path(self) -> dict[str, DocumentRecord]:
         """Every index record, by each path it is known at."""
@@ -176,10 +153,9 @@ class DriveService:
         trigger: str = "upload",
     ) -> Literal["started", "queued"]:
         """Ask for these files (or the whole tree) to be indexed: "started" or "queued"."""
-        directory = None if tree == LIBRARY else self.folder_on_disk(tree)
         return self._indexing.request_run(
             RunRequest(
-                directory=directory,
+                directory=self.folder_on_disk(tree),
                 force=force,
                 trigger=trigger,
                 started_by=started_by,

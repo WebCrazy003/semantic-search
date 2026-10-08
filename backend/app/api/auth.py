@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.auth import (
@@ -42,6 +42,7 @@ from app.models.response_models import (
     ResetRequestStatus,
 )
 from app.services.access_store import User, UsernameTakenError
+from app.services.library_migration import adopt_library
 from app.services.passwords import (
     DUMMY_HASH,
     PasswordRuleError,
@@ -77,6 +78,7 @@ def setup(
     body: Credentials,
     request: Request,
     response: Response,
+    background_tasks: BackgroundTasks,
     container: Container = Depends(get_container),
 ) -> MeResponse:
     """Create the first account, an admin. Only once, and only on this computer.
@@ -95,6 +97,14 @@ def setup(
     start_session(response, container, user)
     container.access.record_login(user.user_id)
     logger.info("setup: created the first administrator %s", user.username)
+    # Files already in the documents folder become this admin's uploads, and the ones
+    # never indexed are indexed now, as an upload would be.
+    if adopt_library(container):
+        waiting = [file.path for file in container.drive.not_indexed(user.user_id)]
+        if waiting and container.drive.request_index(user.user_id, waiting, user.user_id) == (
+            "started"
+        ):
+            background_tasks.add_task(container.indexing.drain)
     return MeResponse(user=user_view(user))
 
 

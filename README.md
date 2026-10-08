@@ -42,18 +42,21 @@ design and the measurements behind it.
 
 ## Accounts and ownership
 
-Anyone who can reach DocSage can search, ask about and open the documents an
-administrator has made **public**, without logging in. Logging in adds a person's own
+Anyone who can reach DocSage can search, ask about and open the documents that have
+been made **public**, without logging in; the start page tells them so. Logging in adds a person's own
 documents. The first start asks for an administrator account, which can only be created
 from the machine DocSage runs on. After that, people sign up with a username and
 password (an admin can turn sign-up off) and see their own documents plus the public
 ones. Admins see everything. Logging in, sign-up, password changes and settings are
 dialogs over the search page; there is no login page.
 
-- **Ownership comes from where a file lives.** Uploads go to
-  `documents/users/<user_id>/`; everything else in `documents/` and in registered
-  folders is the *library*, visible to admins until they publish it. Clearing the index
-  or rebuilding the manifest therefore never changes who owns what.
+- **Every document is someone's upload.** Uploads go to `documents/users/<user_id>/`,
+  and ownership comes from that folder, so clearing the index or rebuilding the manifest
+  never changes who owns what. Anything else in `documents/` is ignored.
+- **Owners publish.** A user makes their own documents public or private from the
+  document manager (the Visibility column, or select and **Make public**); an admin can
+  do it for anyone's. The **Public** view lists your public documents, or for an admin
+  everyone's, with who published each one and a **Make private** button.
 - **Folders are in the database, not on disk.** The document manager's folders, and which
   folder each file is in, live in `data/access.db`; the files themselves stay flat in the
   owner's folder. Moving a file is one row: instant, never re-indexed, and only within
@@ -63,8 +66,12 @@ dialogs over the search page; there is no login page.
   directly. There is no email.
 - **Locked out?** `uv run --directory backend python ../scripts/reset_admin.py <username>`
   prints a temporary password and makes that account an active admin.
-- **Upgrading** an install from before accounts: everything already indexed becomes
-  library, private to admins, with no re-embedding. Publish it from the document manager.
+- **Upgrading** an install that had a library (files put in `documents/` by hand,
+  registered folders, or anything indexed before accounts): at startup, or as soon as
+  the first admin is created, those files move into the first admin's upload folder and
+  show up in their **Imported files** folder. Indexed documents keep their passages and
+  whether they were public, with no re-embedding; files in registered folders are copied,
+  never moved.
 
 See [the accounts spec](docs/superpowers/specs/2026-09-29-accounts-and-document-ownership.md)
 and [the search, viewer and document manager spec](docs/superpowers/specs/2026-10-08-search-home-viewer-and-drive.md)
@@ -105,8 +112,8 @@ Then open http://127.0.0.1:5173, create the administrator account, and open **Ma
 documents** from the account menu. Uploaded PDF and Word files are indexed by the server
 as soon as they arrive, so closing the tab loses nothing; files uploaded but never
 indexed (the server stopped mid-queue) are queued again at startup, and **Index now**
-indexes any that remain. Files put into `documents/` by hand are the library: an admin
-indexes them with **Index now** in the Library view.
+indexes any that remain. Files put into `documents/` by hand are not indexed; upload
+them instead.
 
 ## Windows: building an offline release
 

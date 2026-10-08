@@ -49,8 +49,8 @@ class TestListing:
         rows = client.get(f"/api/documents?owner_id={kim_id}").json()
         assert [row["filename"] for row in rows] == ["kim.pdf"]
         assert rows[0]["owner_username"] == "kim"
-        library = client.get("/api/documents?owner_id=library").json()
-        assert len(library) == 4 and all(row["owner_username"] is None for row in library)
+        own = client.get(f"/api/documents?owner_id={_users(client)['boss']['user_id']}").json()
+        assert len(own) == 4 and all(row["owner_username"] == "boss" for row in own)
 
         hits = client.post(
             "/api/search", json={"query": "manual", "top_k": 50, "filters": {"owner_id": kim_id}}
@@ -214,7 +214,7 @@ class TestBulkVisibility:
         client.post("/api/index", json={})
         ids = [row["document_id"] for row in client.get("/api/documents?status=indexed").json()]
         response = client.post(
-            "/api/admin/documents/visibility",
+            "/api/documents/visibility",
             json={"document_ids": [*ids[:2], "f" * 64], "visibility": "public"},
         )
         assert response.json() == {"updated": 2, "not_found": ["f" * 64]}

@@ -146,7 +146,7 @@ class TestIndexingByHand:
         kim = user_client("kim")
         kim_id = container.access.find_user("kim").user_id
         self._drop(container, kim_id, corpus_dir, "left.pdf")
-        assert resume_uploads(container) == 1
+        assert resume_uploads(container) == 1 + 4  # and the admin's corpus, never indexed
         deadline = time.monotonic() + 10
         while container.indexing.is_running and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -261,13 +261,18 @@ class TestFolders:
 
 
 class TestWhatIsOnDisk:
-    def test_existing_documents_appear_at_the_top_of_their_tree(
+    def test_files_already_there_are_the_first_admins_in_an_imported_folder(
         self, client: TestClient
     ) -> None:
         client.post("/api/index", json={})
-        listing = _list(client, tree="library")
-        assert len(listing["files"]) == 4
+        root = _list(client)
+        assert root["files"] == []
+        assert [(f["name"], f["file_count"]) for f in root["folders"]] == [("Imported files", 4)]
+        listing = _list(client, root["folders"][0]["folder_id"])
         assert {file["state"] for file in listing["files"]} <= {"indexed", "unsupported"}
+
+    def test_there_is_no_library_tree(self, client: TestClient) -> None:
+        assert client.get("/api/drive/list", params={"tree": "library"}).status_code == 403
 
     def test_a_file_deleted_by_hand_disappears(
         self, user_client, corpus_dir: Path, container  # noqa: ANN001
@@ -298,23 +303,6 @@ class TestWhatIsOnDisk:
 
 
 class TestRobustness:
-    def test_an_unreadable_registered_folder_keeps_its_files_in_their_folders(
-        self, client: TestClient, corpus_dir: Path, tmp_path: Path, container  # noqa: ANN001
-    ) -> None:
-        outside = tmp_path / "usb"
-        outside.mkdir()
-        shutil.copy(corpus_dir / "manual_ko.pdf", outside / "ko.pdf")
-        assert client.post("/api/folders", json={"path": str(outside)}).status_code in (200, 201)
-        shelf = _folder(client, "Shelf", tree="library")
-        file_id = next(f for f in _list(client, tree="library")["files"] if f["name"] == "ko.pdf")["file_id"]
-        client.post("/api/drive/move", json={"tree": "library", "file_ids": [file_id], "to": shelf})
-
-        unplugged = tmp_path / "usb-away"
-        outside.rename(unplugged)  # the drive is unplugged
-        _list(client, tree="library")
-        unplugged.rename(outside)  # and back
-        assert _names(_list(client, shelf, tree="library")) == {"ko.pdf": "not_indexed"}
-
     def test_a_move_that_fails_half_way_moves_nothing(self, user_client, corpus_dir: Path) -> None:
         kim = user_client("kim")
         _upload(kim, corpus_dir / "manual_zh.pdf", "a.pdf")

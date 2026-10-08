@@ -18,7 +18,7 @@ from app.models.response_models import (
 from app.services.access_store import User
 from app.services.device_usage import usage_as_dict
 from app.services.indexing_service import RunningError
-from app.services.ownership import LIBRARY, user_folder
+from app.services.ownership import EVERYONE, user_folder
 
 router = APIRouter(tags=["indexing"])
 
@@ -35,13 +35,12 @@ def start_indexing(
     Returns 202 immediately, or 409 if a run is already in progress. Indexing ten PDFs
     takes minutes, so a synchronous handler would time out the browser.
 
-    A user's run always covers their own uploads and nothing else, whatever directory
-    the request names. An admin indexes the whole library, one folder, or one user's
-    uploads (`scope`).
+    A user's run always covers their own uploads and nothing else. An admin indexes
+    every user's uploads, or one user's (`scope`).
     """
     if user.is_admin and request.scope is None:
-        directory = container.indexing.resolve_directory(request.directory)
-        scope, trigger = LIBRARY, request.trigger
+        directory = container.settings.pdf_directory
+        scope, trigger = EVERYONE, request.trigger
     else:
         scope = user.user_id if not user.is_admin else str(request.scope)
         if user.is_admin and container.access.get_user(scope) is None:
@@ -93,7 +92,7 @@ def index_status(
                 "current_file": None,
                 "failures": [],
                 # Whose run it is (a user id) is none of the caller's business either.
-                "scope": "library" if snapshot.scope == "library" else "other",
+                "scope": EVERYONE if snapshot.scope == EVERYONE else "other",
             }
         )
     # The upload panel's rows: the caller's own files, in this run and queued behind it.

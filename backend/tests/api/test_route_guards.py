@@ -35,8 +35,8 @@ VISITORS = {
     ("GET", "/api/documents/{document_id}/passages/{chunk_index}"),
 }
 
-ADMIN_ONLY_PREFIXES = ("/api/admin/", "/api/folders")
-ADMIN_ONLY = {("POST", "/api/index/clear"), ("PUT", "/api/documents/{document_id}/visibility")}
+ADMIN_ONLY_PREFIXES = ("/api/admin/",)
+ADMIN_ONLY = {("POST", "/api/index/clear")}
 
 
 def _routes(app) -> list[tuple[str, str]]:  # noqa: ANN001

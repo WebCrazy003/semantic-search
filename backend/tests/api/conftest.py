@@ -2,7 +2,8 @@
 """Builds the app with a container of fakes, so API tests need no model and no Docker.
 
 `client` is logged in as an administrator, who can reach every route, so the tests that
-predate accounts keep testing what they always did. `anon` has no session, and
+predate accounts keep testing what they always did. The corpus is copied into the
+documents folder and becomes that admin's uploads, as setup does with files already there. `anon` has no session, and
 `user_client("kim")` is a fresh regular user with their own session.
 """
 
@@ -23,7 +24,9 @@ from app.services.access_store import AccessStore
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.device_usage import DeviceUsageMonitor
 from app.services.indexing_service import IndexingService
+from app.services.library_migration import adopt_library
 from app.services.manifest_service import ManifestService
+from app.services.ownership import user_folder
 from app.services.passwords import hash_password
 from app.services.qdrant_service import QdrantService
 from app.services.search_service import SearchService
@@ -101,8 +104,17 @@ def client(app, container: Container) -> Iterator[TestClient]:  # noqa: ANN001
     """An administrator. Entering it runs the app's startup, which the others rely on."""
     with TestClient(app, headers=CSRF) as test_client:
         container.access.create_user(ADMIN_NAME, hash_password(PASSWORD), role="admin")
+        adopt_library(container)
         login(test_client, ADMIN_NAME)
         yield test_client
+
+
+@pytest.fixture
+def admin_dir(client: TestClient, container: Container) -> Path:
+    """The admin's upload folder, where the corpus is once `client` has started."""
+    admin = container.access.find_user(ADMIN_NAME)
+    assert admin is not None
+    return user_folder(container.settings.pdf_directory, admin.user_id)
 
 
 @pytest.fixture

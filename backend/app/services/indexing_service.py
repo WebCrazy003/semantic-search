@@ -38,12 +38,12 @@ from app.services.extractors import (
 )
 from app.services.manifest_service import DocumentRecord, JobRecord, ManifestService
 from app.services.ownership import (
+    EVERYONE,
     LIBRARY,
     PRIVATE,
     PUBLIC,
     document_id_for,
     owner_for,
-    users_root,
     within,
 )
 from app.services.qdrant_service import QdrantService
@@ -76,13 +76,13 @@ class RunningError(Exception):
 
 @dataclass
 class RunRequest:
-    """One run asked for: a folder (None for the whole library), or files in it."""
+    """One run asked for: a folder (None for every user's uploads), or files in it."""
 
     directory: Path | None
     force: bool = False
     trigger: str = "scan"
     started_by: str | None = None
-    scope: str = LIBRARY
+    scope: str = EVERYONE
     # None: everything under the folder, with a sweep. Otherwise only these files.
     paths: tuple[Path, ...] | None = None
 
@@ -114,7 +114,7 @@ class _State:
         self.trigger: str = "scan"
         self.directory: str | None = None
         self.started_by: str | None = None
-        self.scope: str = LIBRARY
+        self.scope: str = EVERYONE
         self.current_file: str | None = None
         self.current_stage: str | None = None
         self.current_file_progress: float = 0.0
@@ -151,7 +151,8 @@ class IndexingService:
         self._qdrant = qdrant
         self._manifest = manifest
         self._default_directory = default_directory
-        # Without it (scripts, unit tests) everything is library and private.
+        # Without it (unit tests) every file is indexed, as LIBRARY's and private. With
+        # it, only the files in a known user's folder are.
         self._access = access
         self._state = _State()
         self._state_lock = threading.Lock()
@@ -175,19 +176,9 @@ class IndexingService:
         return Path(directory) if directory else self._default_directory
 
     def roots(self, directory: Path | str | None = None) -> list[Path]:
-        """Every folder a run covers: the one asked for, or the whole library.
-
-        The library is the default documents folder plus the folders registered by
-        the user, whose documents stay where they are and are never copied.
-        """
-        if directory:
-            return [Path(directory)]
-        found = [self._default_directory]
-        for record in self._manifest.folders():
-            path = Path(record.path)
-            if path not in found:
-                found.append(path)
-        return found
+        """The folder a run covers: the one asked for, or the documents folder, whose
+        users/ holds every user's uploads."""
+        return [Path(directory) if directory else self._default_directory]
 
     def start(
         self,
@@ -195,7 +186,7 @@ class IndexingService:
         force: bool = False,
         trigger: str = "scan",
         started_by: str | None = None,
-        scope: str = LIBRARY,
+        scope: str = EVERYONE,
     ) -> bool:
         """Reserve a run. False means one is already in progress.
 
@@ -353,11 +344,10 @@ class IndexingService:
         self._finish("completed")
 
     def _run(self, directory: Path, force: bool) -> None:
-        whole_library = directory == self._default_directory
-        roots = self.roots(None if whole_library else directory)
+        everything = directory == self._default_directory
+        roots = self.roots(None if everything else directory)
         readable = [root for root in roots if root.is_dir()]
         for missing in [root for root in roots if not root.is_dir()]:
-            # A registered folder on an unplugged drive must not abort the run.
             logger.warning("folder is not readable, skipping: %s", missing)
             self._record_failure(
                 filename=missing.name or str(missing),
@@ -381,7 +371,7 @@ class IndexingService:
             self._state.current_file = None
             self._state.current_stage = "removing deleted files"
         missing = [root for root in roots if not root.is_dir()]
-        self._sweep_deleted(set(seen), None if whole_library else readable, missing)
+        self._sweep_deleted(set(seen), None if everything else readable, missing)
         self._finish("completed")
 
     def _process_all(self, paths: list[Path], force: bool) -> dict[str, Path]:
@@ -465,18 +455,20 @@ class IndexingService:
     def _owned(self, paths: list[Path], known_users: set[str]) -> list[Path]:
         """Drop files that belong to nobody.
 
-        That is a file sitting directly in users/, or one in the folder of a user who no
-        longer exists. Indexing either as library would hand someone's uploads to
-        whoever can see the library.
+        That is any file outside a user's upload folder: one put in the documents folder
+        by hand, one sitting directly in users/, or one in the folder of a user who no
+        longer exists. Every document is somebody's upload.
         """
+        if self._access is None:
+            return paths
         kept: list[Path] = []
         warned: set[str] = set()
         for path in paths:
             owner = owner_for(path, self._default_directory)
-            if owner is not None and (owner == LIBRARY or owner in known_users):
+            if owner is not None and owner in known_users:
                 kept.append(path)
                 continue
-            label = owner or str(users_root(self._default_directory))
+            label = owner or str(path.parent)
             if label not in warned:
                 warned.add(label)
                 logger.warning("skipping files with no owner under %s", label)
@@ -596,7 +588,7 @@ class IndexingService:
         Only documents the run could have seen are candidates: with `roots`, those with
         a path under one of them, so indexing one user's folder never touches anybody
         else's documents. Documents under a folder that could not be read are never
-        candidates, so an unplugged drive does not empty its part of the library.
+        candidates, so an unplugged drive does not empty its part of the index.
         """
         records = self._manifest.all_documents()
         if roots is not None:

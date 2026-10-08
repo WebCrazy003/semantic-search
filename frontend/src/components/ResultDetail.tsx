@@ -81,7 +81,7 @@ function ResultFooter({ hit }: { hit: SearchHit }) {
             },
             { key: 'language', label: 'Language', children: hit.language ?? 'not detected' },
             isAdmin
-              ? { key: 'owner', label: 'Owner', children: hit.owner_username ?? 'Library' }
+              ? { key: 'owner', label: 'Owner', children: hit.owner_username ?? '—' }
               : {
                   key: 'whose',
                   label: 'Whose',

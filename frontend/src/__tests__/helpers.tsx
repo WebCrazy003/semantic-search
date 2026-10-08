@@ -228,7 +228,6 @@ export function makeDriveFile(overrides: Partial<api.DriveFile> = {}): api.Drive
     pages_approximate: false,
     chunks: 30,
     visibility: 'private',
-    external: false,
     ...overrides,
   }
 }

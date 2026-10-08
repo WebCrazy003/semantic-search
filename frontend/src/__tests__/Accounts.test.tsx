@@ -437,11 +437,40 @@ describe('a regular user', () => {
     )
   })
 
-  it('sees their own documents apart from public ones, and cannot delete public ones', async () => {
+  it('sees whether each document is public and publishes their own', async () => {
     asUser()
-    givenDrive([makeDriveFile({ name: 'mine.pdf' })])
+    givenDrive([
+      makeDriveFile({ name: 'mine.pdf', document_id: 'm'.repeat(64) }),
+      makeDriveFile({ file_id: 'f2', name: 'out.pdf', document_id: 'o'.repeat(64), visibility: 'public' }),
+    ])
+    const publish = vi
+      .spyOn(api, 'setVisibilityInBulk')
+      .mockResolvedValue({ updated: 1, not_found: [] })
+    renderApp('/drive')
+
+    const mine = (await screen.findByText('mine.pdf')).closest('tr') as HTMLElement
+    const out = screen.getByText('out.pdf').closest('tr') as HTMLElement
+    expect(within(mine).getByText('Private')).toBeInTheDocument()
+    expect(within(out).getByText('Public')).toBeInTheDocument()
+    fireEvent.contextMenu(screen.getByText('mine.pdf'))
+    expect(screen.queryByText('Make private')).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('menuitem', { name: /make public/i }))
+    expect(publish).toHaveBeenCalledWith(['m'.repeat(64)], 'public')
+    // Nobody else's tree is offered to a regular user, and there is no library.
+    expect(screen.queryByRole('button', { name: 'Library' })).not.toBeInTheDocument()
+  })
+
+  it('sees only their own public documents, with who published them', async () => {
+    asUser()
+    givenDrive([])
     vi.spyOn(api, 'getDocuments').mockResolvedValue([
       makeDocument({ filename: 'mine.pdf', document_id: 'm'.repeat(64) }),
+      makeDocument({
+        filename: 'out.pdf',
+        document_id: 'o'.repeat(64),
+        visibility: 'public',
+        published_by_username: 'kim',
+      }),
       makeDocument({
         filename: 'shared.pdf',
         document_id: 's'.repeat(64),
@@ -450,16 +479,19 @@ describe('a regular user', () => {
         filepath: '',
       }),
     ])
+    const unpublish = vi
+      .spyOn(api, 'setVisibilityInBulk')
+      .mockResolvedValue({ updated: 1, not_found: [] })
     renderApp('/drive')
 
-    expect(await screen.findByText('mine.pdf')).toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Public' }))
+    const row = (await screen.findByText('out.pdf')).closest('tr') as HTMLElement
+    expect(screen.getByRole('columnheader', { name: 'Published by' })).toBeInTheDocument()
+    expect(within(row).getByText('kim')).toBeInTheDocument()
     expect(screen.queryByText('shared.pdf')).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Public' }))
-    expect(await screen.findByText('shared.pdf')).toBeInTheDocument()
     expect(screen.queryByText('mine.pdf')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument()
-    // Neither the library nor anyone else's tree is offered to a regular user.
-    expect(screen.queryByRole('button', { name: 'Library' })).not.toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: /make private/i }))
+    expect(unpublish).toHaveBeenCalledWith(['o'.repeat(64)], 'private')
   })
 
   it('chooses between their own documents and public ones when searching', async () => {
@@ -480,7 +512,7 @@ describe('a regular user', () => {
 })
 
 describe('an administrator', () => {
-  it('opens the library and other users, and can make a document public', async () => {
+  it('opens other users, not a library, and can make a document public', async () => {
     givenDrive([makeDriveFile({ name: 'manual_zh.pdf' })])
     vi.spyOn(api, 'listUsers').mockResolvedValue([
       { user_id: 'admin-id', username: 'boss' } as api.UserAdminView,
@@ -491,11 +523,38 @@ describe('an administrator', () => {
       .mockResolvedValue({ updated: 1, not_found: [] })
     renderApp('/drive')
 
-    expect(await screen.findByRole('button', { name: 'Library' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'kim' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Library' })).not.toBeInTheDocument()
     fireEvent.contextMenu(await screen.findByText('manual_zh.pdf'))
-    await userEvent.click(await screen.findByText('Make public'))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /make public/i }))
     expect(publish).toHaveBeenCalledWith(['a'.repeat(64)], 'public')
+  })
+
+  it('sees every public document with its owner and publisher, and can make it private', async () => {
+    givenDrive([])
+    vi.spyOn(api, 'getDocuments').mockResolvedValue([
+      makeDocument({ filename: 'private.pdf', document_id: 'p'.repeat(64), is_mine: false }),
+      makeDocument({
+        filename: 'kims.pdf',
+        document_id: 'k'.repeat(64),
+        is_mine: false,
+        visibility: 'public',
+        owner_username: 'kim',
+        published_by_username: 'boss',
+      }),
+    ])
+    const unpublish = vi
+      .spyOn(api, 'setVisibilityInBulk')
+      .mockResolvedValue({ updated: 1, not_found: [] })
+    renderApp('/drive')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Public' }))
+    const row = (await screen.findByText('kims.pdf')).closest('tr') as HTMLElement
+    expect(screen.queryByText('private.pdf')).not.toBeInTheDocument()
+    expect(within(row).getByText('kim')).toBeInTheDocument()
+    expect(within(row).getByText('boss')).toBeInTheDocument()
+    await userEvent.click(within(row).getByRole('button', { name: /make private/i }))
+    expect(unpublish).toHaveBeenCalledWith(['k'.repeat(64)], 'private')
   })
 
   it('reaches the admin tools from the account menu', async () => {

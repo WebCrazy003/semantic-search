@@ -26,7 +26,6 @@ import {
   SwapOutlined,
   SyncOutlined,
   TeamOutlined,
-  BookOutlined,
 } from '@ant-design/icons'
 import {
   App as AntApp,
@@ -40,6 +39,7 @@ import {
   Segmented,
   Space,
   Table,
+  Tag,
   Tooltip,
   Tree,
   Typography,
@@ -84,6 +84,7 @@ import {
   type DriveFolder,
   type DriveListing,
   type DriveTree,
+  type Visibility,
 } from '../services/api'
 import { viewerPath } from '../viewer/DocumentViewer'
 
@@ -205,7 +206,6 @@ export function DrivePage() {
     if (place.kind !== 'tree') return [] as DocumentSummary[]
     return library.documents.filter((document) => {
       if (place.tree === 'me') return document.is_mine
-      if (place.tree === 'library') return document.owner_id === 'library'
       return document.owner_id === place.tree
     })
   }, [library.documents, place])
@@ -308,9 +308,8 @@ export function DrivePage() {
   function remove(files: DriveFile[], folders: DriveFolder[]) {
     if (!treeName) return
     const tree = treeName
-    const doomed = deletableFiles(files, tree)
     const inside = folders.reduce((total, folder) => total + folder.file_count, 0)
-    const count = doomed.length + folders.length
+    const count = files.length + folders.length
     if (count === 0) return
     modal.confirm({
       title: `Delete ${count} ${count === 1 ? 'item' : 'items'}?`,
@@ -318,14 +317,12 @@ export function DrivePage() {
         (folders.length
           ? `Folders are deleted with everything in them${inside ? ` (${inside} files at the top level)` : ''}. `
           : '') +
-        (treeName === 'library'
-          ? 'Library files stay on disk and are only removed from search.'
-          : 'Your uploaded files are deleted and stop being searchable.'),
+        'The files are deleted and stop being searchable.',
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: () =>
         act(async () => {
-          if (doomed.length) await deleteDriveFiles(tree, doomed.map((file) => file.file_id))
+          if (files.length) await deleteDriveFiles(tree, files.map((file) => file.file_id))
           for (const folder of folders) await deleteDriveFolder(folder.folder_id)
           setSelected([])
         }, 'Deleted'),
@@ -346,10 +343,15 @@ export function DrivePage() {
     })
   }
 
-  function visibility(files: DriveFile[], value: 'public' | 'private') {
-    const ids = files.flatMap((file) => (file.document_id ? [file.document_id] : []))
+  function visibility(files: DriveFile[], value: Visibility) {
+    const ids = files.flatMap((file) => (file.document_id && file.visibility !== value ? [file.document_id] : []))
     if (ids.length) void act(() => setVisibilityInBulk(ids, value), value === 'public' ? 'Made public' : 'Made private')
   }
+
+  // Everyone decides for their own documents, and an admin for anyone's: the only trees
+  // anyone can open here are ones they may change.
+  const canPublish = chosenFiles.some((file) => file.document_id && file.visibility === 'private')
+  const canUnpublish = chosenFiles.some((file) => file.visibility === 'public')
 
   function upload(files: File[]) {
     if (!ownTree || files.length === 0) return
@@ -421,13 +423,9 @@ export function DrivePage() {
     ...(chosenFiles.some((file) => file.state !== 'indexed' && file.state !== 'duplicate')
       ? [{ key: 'index', icon: <SyncOutlined />, label: 'Index' }]
       : []),
-    ...(isAdmin && chosenFiles.some((file) => file.document_id)
-      ? [
-          { key: 'public', icon: <GlobalOutlined />, label: 'Make public' },
-          { key: 'private', icon: <LockOutlined />, label: 'Make private' },
-        ]
-      : []),
-    ...(deletable(chosenFiles, chosenFolders, treeName)
+    ...(canPublish ? [{ key: 'public', icon: <GlobalOutlined />, label: 'Make public' }] : []),
+    ...(canUnpublish ? [{ key: 'private', icon: <LockOutlined />, label: 'Make private' }] : []),
+    ...(chosen.length
       ? [{ type: 'divider' as const }, { key: 'delete', icon: <DeleteOutlined />, label: 'Delete', danger: true }]
       : []),
   ]
@@ -462,13 +460,19 @@ export function DrivePage() {
           <span className="drive-name">
             {fileIcon(row.file)}
             <span className="drive-file-name">{row.file.name}</span>
-            {row.file.visibility === 'public' ? (
-              <Tooltip title="Public: anyone can find it">
-                <GlobalOutlined className="drive-public" aria-label="Public" />
-              </Tooltip>
-            ) : null}
           </span>
         ),
+    },
+    {
+      key: 'visibility',
+      title: 'Visibility',
+      width: 120,
+      filters: [
+        { text: 'Public', value: 'public' },
+        { text: 'Private', value: 'private' },
+      ],
+      onFilter: (value, row) => row.kind === 'file' && row.file.visibility === value,
+      render: (_, row) => (row.kind === 'file' ? <VisibilityTag visibility={row.file.visibility} /> : null),
     },
     {
       key: 'state',
@@ -526,9 +530,7 @@ export function DrivePage() {
   const rootLabel =
     treeName === 'me'
       ? 'My documents'
-      : treeName === 'library'
-        ? 'Library'
-        : (users.find((other) => other.user_id === treeName)?.username ?? 'Documents')
+      : (users.find((other) => other.user_id === treeName)?.username ?? 'Documents')
 
   const railEntry = (key: string, icon: ReactNode, label: string, active: boolean, onClick: () => void, extra?: ReactNode) => (
     <div key={key}>
@@ -590,9 +592,6 @@ export function DrivePage() {
 
       {railEntry('me', <HomeOutlined />, 'My documents', treeName === 'me', () => go({ kind: 'tree', tree: 'me', folderId: null }), treeName === 'me' ? folderTree : null)}
       {railEntry('public', <GlobalOutlined />, 'Public', place.kind === 'public', () => go({ kind: 'public' }))}
-      {isAdmin
-        ? railEntry('library', <BookOutlined />, 'Library', treeName === 'library', () => go({ kind: 'tree', tree: 'library', folderId: null }), treeName === 'library' ? folderTree : null)
-        : null}
       {isAdmin && users.some((other) => other.user_id !== user?.user_id) ? (
         <div className="rail-group">
           <Typography.Text type="secondary" className="rail-group-title">
@@ -661,11 +660,19 @@ export function DrivePage() {
             <Button icon={<SwapOutlined />} onClick={() => setMoving({ fileIds: chosenFiles.map((file) => file.file_id), folderIds: chosenFolders.map((folder) => folder.folder_id) })}>
               Move to…
             </Button>
-            {deletable(chosenFiles, chosenFolders, treeName) ? (
-              <Button danger icon={<DeleteOutlined />} onClick={() => remove(chosenFiles, chosenFolders)}>
-                Delete
+            {canPublish ? (
+              <Button icon={<GlobalOutlined />} onClick={() => visibility(chosenFiles, 'public')}>
+                Make public
               </Button>
             ) : null}
+            {canUnpublish ? (
+              <Button icon={<LockOutlined />} onClick={() => visibility(chosenFiles, 'private')}>
+                Make private
+              </Button>
+            ) : null}
+            <Button danger icon={<DeleteOutlined />} onClick={() => remove(chosenFiles, chosenFolders)}>
+              Delete
+            </Button>
           </>
         ) : null}
         <Input.Search
@@ -775,7 +782,12 @@ export function DrivePage() {
             <Typography.Text ellipsis className="drive-card-name">
               {row.kind === 'folder' ? row.folder.name : row.file.name}
             </Typography.Text>
-            {row.kind === 'file' ? <StateTag state={row.file.state as RowState} error={row.file.error} /> : null}
+            {row.kind === 'file' ? (
+              <Space size={4} wrap>
+                <StateTag state={row.file.state as RowState} error={row.file.error} />
+                <VisibilityTag visibility={row.file.visibility} />
+              </Space>
+            ) : null}
           </div>
         ))}
       </div>
@@ -789,7 +801,17 @@ export function DrivePage() {
       <section className={`drive-main${dropping ? ' dropping' : ''}`} {...dropTarget(folderId, true)}>
         {toolbar}
         {error ? <Alert type="error" showIcon title={error} className="page-alert" /> : null}
-        {place.kind === 'public' ? <PublicList documents={library.documents} isAdmin={isAdmin} /> : list}
+        {place.kind === 'public' ? (
+          <PublicList
+            documents={library.documents}
+            isAdmin={isAdmin}
+            onMakePrivate={(document) =>
+              void act(() => setVisibilityInBulk([document.document_id], 'private'), `${document.filename} is private`)
+            }
+          />
+        ) : (
+          list
+        )}
       </section>
 
       {menu ? (
@@ -856,10 +878,42 @@ function ContextMenu({
   )
 }
 
-/** Documents shared with everyone. Read-only here: they are their owners' to move. */
-function PublicList({ documents, isAdmin }: { documents: DocumentSummary[]; isAdmin: boolean }) {
+/** Whether a file is public. Nothing for a file that is not indexed yet. */
+function VisibilityTag({ visibility }: { visibility: DriveFile['visibility'] }) {
+  if (visibility === 'public') {
+    return (
+      <Tooltip title="Anyone can find it, without logging in">
+        <Tag color="blue" icon={<GlobalOutlined />} className="drive-visibility">
+          Public
+        </Tag>
+      </Tooltip>
+    )
+  }
+  if (visibility === 'private') {
+    return (
+      <Tag icon={<LockOutlined />} className="drive-visibility">
+        Private
+      </Tag>
+    )
+  }
+  return <Typography.Text type="secondary">—</Typography.Text>
+}
+
+/**
+ * Public documents: for an admin everyone's, for anyone else their own. Each says who
+ * made it public and can be made private again; moving them is their owners' business.
+ */
+function PublicList({
+  documents,
+  isAdmin,
+  onMakePrivate,
+}: {
+  documents: DocumentSummary[]
+  isAdmin: boolean
+  onMakePrivate: (document: DocumentSummary) => void
+}) {
   const shared = documents.filter(
-    (document) => document.visibility === 'public' && (isAdmin || !document.is_mine),
+    (document) => document.visibility === 'public' && (isAdmin || document.is_mine),
   )
   return (
     <Table<DocumentSummary>
@@ -867,7 +921,18 @@ function PublicList({ documents, isAdmin }: { documents: DocumentSummary[]; isAd
       size="middle"
       pagination={false}
       dataSource={shared}
-      locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing has been made public yet." /> }}
+      locale={{
+        emptyText: (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={
+              isAdmin
+                ? 'Nothing has been made public yet.'
+                : 'None of your documents is public. Select some in My documents and choose Make public.'
+            }
+          />
+        ),
+      }}
       onRow={(document) => ({ onDoubleClick: () => openDocument(document.document_id) })}
       columns={[
         {
@@ -881,15 +946,23 @@ function PublicList({ documents, isAdmin }: { documents: DocumentSummary[]; isAd
           ),
         },
         ...(isAdmin
-          ? [{ key: 'owner', title: 'Owner', render: (_: unknown, document: DocumentSummary) => document.owner_username ?? 'Library' }]
+          ? [{ key: 'owner', title: 'Owner', render: (_: unknown, document: DocumentSummary) => document.owner_username ?? '—' }]
           : []),
+        {
+          key: 'published-by',
+          title: 'Published by',
+          render: (_: unknown, document: DocumentSummary) => document.published_by_username ?? '—',
+        },
         { key: 'pages', title: 'Pages', width: 80, align: 'right' as const, render: (_: unknown, document: DocumentSummary) => `${document.pages_approximate ? '~' : ''}${document.pages}` },
         {
           key: 'open',
           title: '',
-          width: 120,
+          width: 220,
           render: (_: unknown, document: DocumentSummary) => (
             <Space size={0}>
+              <Button size="small" icon={<LockOutlined />} onClick={() => onMakePrivate(document)}>
+                Make private
+              </Button>
               <Tooltip title="Open in a new tab">
                 <Button type="text" size="small" aria-label={`Open ${document.filename}`} icon={<ExportOutlined />} onClick={() => openDocument(document.document_id)} />
               </Tooltip>
@@ -902,18 +975,6 @@ function PublicList({ documents, isAdmin }: { documents: DocumentSummary[]; isAd
       ]}
     />
   )
-}
-
-/**
- * The files a delete would act on. Any of one's own; in the library, only indexed ones,
- * since a library file stays on disk and deleting it only takes it out of search.
- */
-function deletableFiles(files: DriveFile[], tree: string | null): DriveFile[] {
-  return tree === 'library' ? files.filter((file) => file.document_id) : files
-}
-
-function deletable(files: DriveFile[], folders: DriveFolder[], tree: string | null): boolean {
-  return folders.length > 0 || deletableFiles(files, tree).length > 0
 }
 
 function nameOf(row: Row): string {

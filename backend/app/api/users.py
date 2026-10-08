@@ -1,5 +1,5 @@
 # backend/app/api/users.py
-"""Administration: accounts, password reset requests, visibility in bulk, sign-up.
+"""Administration: accounts, password reset requests, sign-up.
 
 Every route here is admin-only; main.py guards the router.
 """
@@ -10,21 +10,19 @@ import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.guards import apply_visibility, remove_document
+from app.api.guards import remove_document
 from app.auth import admin_user
 from app.deps import Container, get_container
 from app.logging_config import get_logger
 from app.models.request_models import (
     AdminResetPasswordRequest,
     AuthSettingsRequest,
-    BulkVisibilityRequest,
     CreateUserRequest,
     UpdateUserRequest,
 )
 from app.models.response_models import (
     AdminResetPasswordResponse,
     AuthSettingsResponse,
-    BulkVisibilityResponse,
     CreatedUserResponse,
     DeletedUserResponse,
     ResetRequestView,
@@ -163,8 +161,7 @@ def delete_user(
     passages = sum(record.chunks for record in owned)
     files = 0
     for record in owned:
-        removed, _ = remove_document(container, record)
-        files += removed
+        files += remove_document(container, record)
 
     folder = user_folder(container.settings.pdf_directory, user_id)
     if folder.is_dir():
@@ -236,19 +233,6 @@ def deny_reset_request(
     if not container.access.decide_reset_request(request_id, approve=False, admin_id=admin.user_id):
         raise HTTPException(status_code=409, detail="This request is no longer pending")
     logger.info("%s denied the password reset for %s", admin.username, found.username)
-
-
-# ------------------------------------------------------------------ documents
-
-
-@router.post("/documents/visibility", response_model=BulkVisibilityResponse)
-def bulk_visibility(
-    body: BulkVisibilityRequest,
-    admin: User = Depends(admin_user),
-    container: Container = Depends(get_container),
-) -> BulkVisibilityResponse:
-    updated, unknown = apply_visibility(container, body.document_ids, body.visibility, admin)
-    return BulkVisibilityResponse(updated=len(updated), not_found=unknown)
 
 
 # ------------------------------------------------------------------ settings

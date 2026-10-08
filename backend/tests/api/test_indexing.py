@@ -26,21 +26,20 @@ class TestStartIndexing:
         assert status["failed_documents"] == 0
         assert status["total_chunks"] > 0
 
-    def test_an_explicit_directory_is_used(self, client: TestClient, tmp_path: Path) -> None:
-        empty = tmp_path / "empty-corpus"
-        empty.mkdir()
-        client.post("/api/index", json={"directory": str(empty)})
-        status = client.get("/api/index/status").json()
-        assert status["directory"] == str(empty)
-        assert status["total_documents"] == 0
-
-    def test_a_missing_directory_is_reported_in_the_status(
-        self, client: TestClient, tmp_path: Path
+    def test_a_directory_in_the_request_is_ignored(
+        self, client: TestClient, tmp_path: Path, api_documents_dir: Path
     ) -> None:
-        client.post("/api/index", json={"directory": str(tmp_path / "ghost")})
+        client.post("/api/index", json={"directory": str(tmp_path)})
         status = client.get("/api/index/status").json()
-        assert status["status"] == "failed"
-        assert status["failures"][0]["error_type"] == "DirectoryNotFound"
+        assert status["directory"] == str(api_documents_dir)
+        assert status["indexed_documents"] == 3
+
+    def test_files_outside_every_users_folder_are_not_indexed(
+        self, client: TestClient, api_documents_dir: Path, admin_dir: Path
+    ) -> None:
+        (admin_dir / "manual_zh.pdf").rename(api_documents_dir / "dropped.pdf")
+        client.post("/api/index", json={})
+        assert "dropped.pdf" not in [d["filename"] for d in client.get("/api/documents").json()]
 
     def test_force_reindexes(self, client: TestClient) -> None:
         client.post("/api/index", json={})
@@ -78,9 +77,9 @@ class TestStatusBeforeAnyRun:
 
 class TestFailureReporting:
     def test_a_corrupt_file_is_listed_with_its_error(
-        self, client: TestClient, api_documents_dir: Path
+        self, client: TestClient, admin_dir: Path
     ) -> None:
-        (api_documents_dir / "broken.pdf").write_bytes(b"%PDF-1.7\nnope")
+        (admin_dir / "broken.pdf").write_bytes(b"%PDF-1.7\nnope")
         client.post("/api/index", json={})
         status = client.get("/api/index/status").json()
         assert status["failed_documents"] == 1

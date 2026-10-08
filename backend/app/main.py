@@ -17,11 +17,12 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import admin, auth, documents, drive, folders, health, indexing, search, users
+from app.api import admin, auth, documents, drive, health, indexing, search, users
 from app.auth import CsrfHeaderMiddleware, active_user, admin_user
 from app.config import REPO_ROOT, Settings, get_settings
 from app.deps import Container, build_container
 from app.logging_config import configure_logging, get_logger
+from app.services.library_migration import adopt_library
 
 logger = get_logger("main")
 
@@ -81,6 +82,11 @@ def create_app(container: Container | None = None, settings: Settings | None = N
         assigned = built.qdrant.assign_unowned_to_library()
         if assigned:
             logger.info("assigned %d existing passages to the library", assigned)
+        # Every document is a user's: the library goes to the first admin, if there is one.
+        try:
+            adopt_library(built)
+        except Exception:  # never a reason not to start; the next start tries again
+            logger.exception("could not hand the library to the first admin")
         built.embedder.warmup()
         resume_uploads(built)
         logger.info("ready on %s:%d", resolved.api_host, resolved.api_port)
@@ -124,7 +130,6 @@ def create_app(container: Container | None = None, settings: Settings | None = N
     application.include_router(indexing.router, prefix="/api", dependencies=signed_in)
     application.include_router(documents.router, prefix="/api", dependencies=signed_in)
     application.include_router(drive.router, prefix="/api", dependencies=signed_in)
-    application.include_router(folders.router, prefix="/api", dependencies=admins)
     application.include_router(admin.router, prefix="/api", dependencies=admins)
     application.include_router(users.router, prefix="/api", dependencies=admins)
 

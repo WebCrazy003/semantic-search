@@ -64,7 +64,7 @@ class TestPrivateByDefault:
         # Owner and visibility filters are the admin's; for a user they change nothing.
         assert _search_files(kim, filters={"owner_id": "library"}) == set()
 
-    def test_the_library_is_admin_only_until_published(
+    def test_the_admins_documents_are_private_until_published(
         self, client: TestClient, user_client
     ) -> None:
         _index(client)
@@ -173,7 +173,7 @@ class TestPublicDocuments:
         assert _docs(client)["manual_zh.pdf"]["visibility"] == "public"
 
     def test_a_new_version_of_a_public_file_stays_public(
-        self, client: TestClient, user_client, container, corpus_dir: Path  # noqa: ANN001
+        self, client: TestClient, user_client, container, admin_dir: Path  # noqa: ANN001
     ) -> None:
         _index(client)
         old_id = _docs(client)["manual_zh.pdf"]["document_id"]
@@ -181,7 +181,7 @@ class TestPublicDocuments:
 
         # A save changes the bytes, so the file hashes to a new id. Bytes after %%EOF
         # are ignored by PDF readers.
-        target = container.settings.pdf_directory / "manual_zh.pdf"
+        target = admin_dir / "manual_zh.pdf"
         target.write_bytes(target.read_bytes() + b"\n% saved again\n")
         _index(client)
 
@@ -189,6 +189,54 @@ class TestPublicDocuments:
         assert row["document_id"] != old_id
         assert row["visibility"] == "public"
         assert old_id not in container.access.public_ids()
+
+
+class TestOwnersPublish:
+    def test_an_owner_makes_their_own_document_public_and_private(
+        self, user_client, corpus_dir: Path, container  # noqa: ANN001
+    ) -> None:
+        kim, lee = user_client("kim"), user_client("lee")
+        _upload(lee, corpus_dir / "manual_ko.pdf", "lee.pdf")
+        _index(lee)
+        lee_id = _docs(lee)["lee.pdf"]["document_id"]
+
+        response = lee.put(f"/api/documents/{lee_id}/visibility", json={"visibility": "public"})
+        assert response.status_code == 200
+        assert _search_files(kim) == {"lee.pdf"}
+        assert container.access.publishers()[lee_id] == _user_id(container, "lee")
+
+        lee.put(f"/api/documents/{lee_id}/visibility", json={"visibility": "private"})
+        assert _search_files(kim) == set()
+
+    def test_nobody_else_can_change_it(self, user_client, corpus_dir: Path) -> None:
+        kim, lee = user_client("kim"), user_client("lee")
+        _upload(lee, corpus_dir / "manual_ko.pdf", "lee.pdf")
+        _index(lee)
+        lee_id = _docs(lee)["lee.pdf"]["document_id"]
+        lee.put(f"/api/documents/{lee_id}/visibility", json={"visibility": "public"})
+
+        refused = kim.put(f"/api/documents/{lee_id}/visibility", json={"visibility": "private"})
+        assert refused.status_code == 404
+        bulk = kim.post(
+            "/api/documents/visibility",
+            json={"document_ids": [lee_id], "visibility": "private"},
+        ).json()
+        assert bulk == {"updated": 0, "not_found": [lee_id]}
+        assert _docs(lee)["lee.pdf"]["visibility"] == "public"
+
+    def test_the_owner_and_admins_see_who_published_it(
+        self, client: TestClient, user_client, corpus_dir: Path
+    ) -> None:
+        kim, lee = user_client("kim"), user_client("lee")
+        _upload(lee, corpus_dir / "manual_ko.pdf", "lee.pdf")
+        _index(lee)
+        lee_id = _docs(lee)["lee.pdf"]["document_id"]
+        client.put(f"/api/documents/{lee_id}/visibility", json={"visibility": "public"})
+
+        assert _docs(lee)["lee.pdf"]["published_by_username"] == "boss"
+        assert _docs(client)["lee.pdf"]["published_by_username"] == "boss"
+        # To anyone else a public document never says who is behind it.
+        assert _docs(kim)["lee.pdf"]["published_by_username"] is None
 
 
 class TestOwnershipOnDisk:
@@ -212,7 +260,7 @@ class TestOwnershipOnDisk:
         kim = user_client("kim")
         _index(kim, directory=str(container.settings.pdf_directory))
         assert _docs(kim) == {}
-        assert _docs(client) == {}  # the library was not indexed either
+        assert _docs(client) == {}  # nor anybody else's
 
     def test_indexing_one_users_folder_removes_nobody_elses_documents(
         self, client: TestClient, user_client, corpus_dir: Path
@@ -236,8 +284,8 @@ class TestOwnershipOnDisk:
         assert set(_docs(kim)) == {"kim.pdf"}
         assert _docs(client)["kim.pdf"]["owner_username"] == "kim"
 
-    def test_removing_your_upload_deletes_the_file_but_the_library_keeps_its_own(
-        self, client: TestClient, user_client, corpus_dir: Path, container  # noqa: ANN001
+    def test_removing_a_document_deletes_its_file(
+        self, client: TestClient, user_client, corpus_dir: Path, container, admin_dir: Path  # noqa: ANN001
     ) -> None:
         kim = user_client("kim")
         _upload(kim, corpus_dir / "manual_zh.pdf", "kim.pdf")
@@ -251,9 +299,9 @@ class TestOwnershipOnDisk:
         assert not uploaded.exists()
 
         _index(client)
-        library = _docs(client)["manual_ko.pdf"]
-        assert client.delete(f"/api/documents/{library['document_id']}").json()["file_kept"]
-        assert (container.settings.pdf_directory / "manual_ko.pdf").exists()
+        own = _docs(client)["manual_ko.pdf"]
+        assert client.delete(f"/api/documents/{own['document_id']}").json()["file_kept"] is False
+        assert not (admin_dir / "manual_ko.pdf").exists()
 
     def test_a_folder_of_an_unknown_user_is_skipped(
         self, client: TestClient, container, corpus_dir: Path  # noqa: ANN001

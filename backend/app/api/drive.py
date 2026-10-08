@@ -2,9 +2,9 @@
 """The document manager: folders kept in the database, files moved between them, and
 indexing asked for by hand (2026-10-08 spec §3.5).
 
-Everyone works in their own tree ("me"). An admin may also open the library's tree and
-any user's. A move never touches the disk, the index or Qdrant: it changes which folder
-a row points at, so it is instant and allowed while indexing runs.
+Everyone works in their own tree ("me"). An admin may also open any user's. A move
+never touches the disk, the index or Qdrant: it changes which folder a row points at, so
+it is instant and allowed while indexing runs.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ from app.services.drive_service import FileState
 from app.services.drive_store import DriveError, DriveFile, Folder, NameTakenError
 from app.services.extractors import file_type_for
 from app.services.manifest_service import DocumentRecord
-from app.services.ownership import LIBRARY, user_folder, within
+from app.services.ownership import user_folder, within
 
 logger = get_logger("api.drive")
 router = APIRouter(tags=["drive"])
@@ -49,7 +49,7 @@ def resolve_tree(container: Container, user: User, tree: str) -> str:
     """The tree a request names, if the caller may open it. 403 otherwise."""
     if tree in ("me", user.user_id):
         return user.user_id
-    if user.is_admin and (tree == LIBRARY or container.access.get_user(tree) is not None):
+    if user.is_admin and container.access.get_user(tree) is not None:
         return tree
     raise HTTPException(status_code=403, detail="You can only open your own documents")
 
@@ -98,7 +98,6 @@ def drive_list(
     folders = store.folders(owner)
     here = [file for file in files if file.folder_id == folder_id]
     counts = Counter(file.folder_id for file in files)
-    external = _external_roots(container)
     return DriveListing(
         tree=owner,
         folder_id=folder_id,
@@ -116,7 +115,7 @@ def drive_list(
             if folder.parent_id == folder_id
         ],
         files=sorted(
-            (_file_view(states[file.file_id], external) for file in here),
+            (_file_view(states[file.file_id]) for file in here),
             key=lambda view: view.name.casefold(),
         ),
         not_indexed=sum(1 for state in states.values() if state.state == "not_indexed"),
@@ -160,8 +159,8 @@ def delete_folder(
     user: User = Depends(active_user),
     container: Container = Depends(get_container),
 ) -> Response:
-    """The folder, the folders in it and their documents. A user's uploads are deleted
-    from disk, as deleting a document does; library files are only unindexed."""
+    """The folder, the folders in it and their documents, deleted from disk as deleting
+    a document does."""
     folder = _own_folder(container, user, folder_id)
     store = container.drive.store
     files = store.files_under(folder.folder_id)
@@ -171,7 +170,6 @@ def delete_folder(
             status_code=409, detail="Wait until indexing finishes, then delete the folder"
         )
     _purge(container, folder.tree, files, by_path)
-    # Library files stay on disk; without their folder they go back to the top.
     store.forget_many([file.path for file in files])
     store.delete_folder(folder.folder_id)
     logger.info("%s deleted folder %s with %d file(s)", user.username, folder.name, len(files))
@@ -184,8 +182,7 @@ def delete_files(
     user: User = Depends(active_user),
     container: Container = Depends(get_container),
 ) -> Response:
-    """Delete files, indexed or not. A user's uploads are deleted from disk; library
-    files are only unindexed, as deleting a document always does."""
+    """Delete files, indexed or not: out of search and off the disk."""
     owner = resolve_tree(container, user, body.tree)
     try:
         files = container.drive.store.files_by_id(owner, body.file_ids)
@@ -195,8 +192,7 @@ def delete_files(
     if container.indexing.is_running or container.drive.busy(owner, files, by_path):
         raise HTTPException(status_code=409, detail="Wait until indexing finishes, then delete")
     _purge(container, owner, files, by_path)
-    if owner != LIBRARY:
-        container.drive.store.forget_many([file.path for file in files])
+    container.drive.store.forget_many([file.path for file in files])
     logger.info("%s deleted %d file(s)", user.username, len(files))
     return Response(status_code=204)
 
@@ -280,13 +276,7 @@ def _nest(
     ]
 
 
-def _external_roots(container: Container) -> list[Path]:
-    documents = container.settings.pdf_directory.resolve()
-    roots = (Path(folder.path).resolve() for folder in container.manifest.folders())
-    return [root for root in roots if not within(root, documents)]
-
-
-def _file_view(state: FileState, external: list[Path]) -> DriveFileView:
+def _file_view(state: FileState) -> DriveFileView:
     file, record = state.file, state.record
     path = Path(file.path)
     size, modified = (record.file_size, record.modified_at) if record else _on_disk(path)
@@ -305,7 +295,6 @@ def _file_view(state: FileState, external: list[Path]) -> DriveFileView:
         pages_approximate=file_type == "docx",
         chunks=record.chunks if record else None,
         visibility=record.visibility if record else None,
-        external=bool(external) and any(within(path, root) for root in external),
     )
 
 
@@ -324,7 +313,7 @@ def _purge(
     files: list[DriveFile],
     by_path: dict[str, DocumentRecord],
 ) -> None:
-    """Take files out of search and, for a user's uploads, off the disk.
+    """Take files out of search and off the disk.
 
     A file whose content another of the owner's files shares is one copy of a document
     that stays: only that copy goes, and the document is pointed at the other one.
@@ -332,9 +321,8 @@ def _purge(
     for file in files:
         record = by_path.get(file.path)
         if record is None:
-            if tree != LIBRARY:
-                _delete_upload(container, tree, file.path)
-        elif tree != LIBRARY and len(record.known_paths) > 1:
+            _delete_upload(container, tree, file.path)
+        elif len(record.known_paths) > 1:
             _delete_upload(container, tree, file.path)
             _forget_copy(container, record, file.path)
         else:

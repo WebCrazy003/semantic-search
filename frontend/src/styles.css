@@ -141,6 +141,12 @@ body {
   line-height: 1;
 }
 
+.home-visitor {
+  width: 100%;
+  max-width: 584px;
+  margin-top: 20px;
+}
+
 .home-footer {
   padding: 16px;
   text-align: center;
@@ -1194,9 +1200,8 @@ body {
   color: #1a73e8;
 }
 
-.drive-public {
-  color: var(--quiet-text);
-  font-size: 12px;
+.drive-visibility {
+  margin-inline-end: 0;
 }
 
 .drive-table .ant-table-row {
