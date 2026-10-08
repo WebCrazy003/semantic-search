@@ -1,14 +1,14 @@
 // frontend/src/__tests__/AnswerPanel.test.tsx
-// The answer panel, driven through the search page as a reader meets it: /api/ask is
-// replaced by a script that calls the stream's handlers.
+// The answer panel, driven through the app as a reader meets it: a question typed on the
+// home page opens the results page. /api/ask is replaced by a script that calls the
+// stream's handlers.
 
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { SearchPage } from '../pages/SearchPage'
 import * as api from '../services/api'
 import { makeStatus } from './fixtures'
-import { givenAnswers, givenSettings, mockAsk, renderWithProviders, untilAborted } from './helpers'
+import { givenAnswers, givenSettings, mockAsk, renderApp, searchFor, untilAborted } from './helpers'
 
 const response: api.SearchResponse = {
   query: 'How often are the seals replaced?',
@@ -93,8 +93,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+/** Ask from the home page's box, which opens the results page with the answer on it. */
 async function ask(question = 'How often are the seals replaced?') {
-  await userEvent.type(screen.getByRole('textbox', { name: /search documents/i }), `${question}{Enter}`)
+  await searchFor(question)
 }
 
 const panel = () => screen.findByRole('region', { name: 'Answer' })
@@ -109,7 +110,7 @@ describe('while the answer is being written', () => {
       write = handlers.onDelta
       await untilAborted(signal)
     })
-    const { container } = renderWithProviders(<SearchPage />)
+    const { container } = renderApp()
     await ask()
 
     const region = await panel()
@@ -135,7 +136,7 @@ describe('while the answer is being written', () => {
       await untilAborted(signal)
       aborted = true
     })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     await answerText()
     await userEvent.click(within(await panel()).getByRole('button', { name: /stop/i }))
@@ -152,7 +153,7 @@ describe('while the answer is being written', () => {
 describe('citations', () => {
   it('turns [n] into chips and lists the sources with their pages', async () => {
     answers('Replace the seals every 2,000 hours [1]. Tighten to 25 N·m [2].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
 
     const region = await panel()
@@ -170,7 +171,7 @@ describe('citations', () => {
 
   it('reads [1][2] and [1, 2] as two citations each', async () => {
     answers('Both say so [1][2], twice [1, 2].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const text = await answerText()
     expect(within(text).getAllByRole('button', { name: /^source 1/i })).toHaveLength(2)
@@ -180,7 +181,7 @@ describe('citations', () => {
 
   it('opens the cited result when a chip is clicked', async () => {
     answers('Tighten to 25 N·m [2].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const text = await answerText()
     await userEvent.click(within(text).getByRole('button', { name: /^source 2/i }))
@@ -194,7 +195,7 @@ describe('citations', () => {
 
   it('leaves a number with no matching source as plain text', async () => {
     answers('Known [1], unknown [9].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const text = await answerText()
     expect(text).toHaveTextContent('Known 1, unknown [9].')
@@ -203,7 +204,7 @@ describe('citations', () => {
 
   it('marks the cited results in the list with their number', async () => {
     answers('Tighten to 25 N·m [2].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     await answerText()
     const cards = screen.getAllByTestId('result-card')
@@ -217,7 +218,7 @@ describe('citations', () => {
 describe('the text', () => {
   it('shows HTML from the model as text, never as markup', async () => {
     answers('<img src=x onerror=alert(1)> and <b>bold</b>')
-    const { container } = renderWithProviders(<SearchPage />)
+    const { container } = renderApp()
     await ask()
     const text = await answerText()
     expect(text).toHaveTextContent('<img src=x onerror=alert(1)> and <b>bold</b>')
@@ -227,7 +228,7 @@ describe('the text', () => {
 
   it('drops Markdown bold markers and keeps paragraph breaks', async () => {
     answers(['The **seals** are replaced ', 'every **2,000 hours** [1].\n\nCheck them weekly.'])
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const text = await answerText()
     expect(text.textContent).toBe('The seals are replaced every 2,000 hours 1.\n\nCheck them weekly.')
@@ -235,7 +236,7 @@ describe('the text', () => {
 
   it('copies the plain answer once it is done', async () => {
     answers('The **seals** last 2,000 hours [1].')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     await answerText()
     const writeText = vi.fn().mockResolvedValue(undefined)
@@ -250,7 +251,7 @@ describe('the text', () => {
 describe('outcomes', () => {
   it('styles "not found" as a quiet message, without sources or footer', async () => {
     answers('Not found in your documents.', { status: 'not_found' })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const text = await answerText()
     expect(text).toHaveClass('answer-not-found')
@@ -265,7 +266,7 @@ describe('outcomes', () => {
       handlers.onResults(response)
       handlers.onError({ code: 'unavailable', message: 'The answer model is not responding.' })
     })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     const region = await panel()
     expect(await within(region).findByText(/the answer model is not responding/i)).toBeInTheDocument()
@@ -283,7 +284,7 @@ describe('language', () => {
     ['ko', '문서를 바탕으로 생성된 답변입니다. 출처를 확인하세요.'],
   ] as const)('writes the footer in %s', async (language, footer) => {
     answers('… [1]', { language })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     await answerText()
     expect(within(await panel()).getByText(footer)).toBeInTheDocument()
@@ -291,7 +292,7 @@ describe('language', () => {
 
   it('says which languages it answers in when the question was in another one', async () => {
     answers('The seals are replaced every 2,000 hours [1].', { unsupported: true })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask('シールの交換頻度は？')
     expect(
       await within(await panel()).findByText('Answers are given in English, Chinese or Korean.'),
@@ -300,7 +301,7 @@ describe('language', () => {
 
   it('does not show the notice for a supported language', async () => {
     answers('씰은 2,000시간마다 교체합니다 [1].', { language: 'ko' })
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask('씰 교체 주기는?')
     await answerText()
     expect(screen.queryByText(/answers are given in english/i)).not.toBeInTheDocument()
@@ -311,7 +312,7 @@ describe('developer mode', () => {
   it('shows the model and how long the answer took', async () => {
     givenSettings({ developerMode: true })
     answers('… [1]')
-    renderWithProviders(<SearchPage />)
+    renderApp()
     await ask()
     await answerText()
     expect(within(await panel()).getByText(/qwen3-4b · 3120 ms/)).toBeInTheDocument()

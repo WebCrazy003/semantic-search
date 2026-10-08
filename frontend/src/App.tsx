@@ -1,139 +1,145 @@
 // frontend/src/App.tsx
-import { FileSearchOutlined, FolderOpenOutlined, SettingOutlined } from '@ant-design/icons'
-import { Button, Layout, Space, Tooltip } from 'antd'
-import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
+import { Alert, Button } from 'antd'
+import { Link, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from './app/AuthContext'
-import { CHANGE_PASSWORD_PATH, PublicOnly, RequireAdmin, RequireAuth } from './app/guards'
+import { DIALOG_PARAM, DialogsProvider, type DialogName } from './app/DialogsContext'
+import { RequireAdmin, RequireAuth } from './app/guards'
 import { LibraryProvider } from './app/LibraryContext'
-import { SearchProvider } from './app/SearchContext'
-import { AccountMenu } from './components/AccountMenu'
-import { DocSageMark } from './components/DocSageMark'
+import { SearchProvider, useSearchContext } from './app/SearchContext'
+import { TopActions } from './components/AccountMenu'
+import { SearchBar } from './components/SearchBar'
 import { AdminPage } from './pages/AdminPage'
-import { ChangePasswordPage } from './pages/ChangePasswordPage'
-import { DocumentsPage } from './pages/DocumentsPage'
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
-import { HeroPage } from './pages/HeroPage'
-import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
+import { DrivePage } from './pages/DrivePage'
+import { HomePage } from './pages/HomePage'
 import { SearchPage } from './pages/SearchPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { SetupPage } from './pages/SetupPage'
+import { searchPath } from './pages/searchPath'
 import { UsersPage } from './pages/UsersPage'
+import { ViewerPage } from './pages/ViewerPage'
 import './styles.css'
 
-const { Header, Content, Footer } = Layout
-
-/**
- * Everything behind a login shares one library poller and one search state. They mount
- * here, not above the router, so nothing asks for documents before someone has logged
- * in, and logging out throws away the last person's results.
- */
-function SignedIn() {
+/** The header's search box: it shows the query in the URL and searches by navigating. */
+function HeaderSearch() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { run, busy } = useSearchContext()
+  const q = new URLSearchParams(location.search).get('q') ?? ''
   return (
-    <RequireAuth>
-      <LibraryProvider>
-        <SearchProvider>
-          <Outlet />
-        </SearchProvider>
-      </LibraryProvider>
-    </RequireAuth>
+    <SearchBar
+      // A new ?q (Back, or a search from elsewhere) resets what the box shows.
+      key={q}
+      initialValue={q}
+      busy={busy}
+      onSearch={(query) => {
+        // The same query again re-runs it; the URL would not change, so nothing else would.
+        if (query === q) void run(query)
+        else navigate(searchPath(query))
+      }}
+    />
   )
 }
 
-export default function App() {
-  const navigate = useNavigate()
-  const { user, isAdmin } = useAuth()
-  const signedIn = !!user && !user.must_change_password
-
+/**
+ * Every screen but the home page: a slim header with the wordmark, the search box on
+ * the results page, and the same top-right buttons the home page has.
+ */
+function Shell() {
+  const location = useLocation()
+  const onResults = location.pathname === '/search'
   return (
-    <Layout className="app-shell">
-      <Header className="app-header">
-        <NavLink to="/" className="brand" aria-label="DocSage, go to the start page">
-          <DocSageMark size={30} />
-          <span className="brand-name" aria-hidden="true">
-            <span className="brand-doc">Doc</span>
-            <span className="brand-sage">Sage</span>
-          </span>
-        </NavLink>
+    <div className="shell">
+      <header className="topbar">
+        <Link to="/" className="brand" aria-label="DocSage, go to the start page">
+          <span className="brand-doc">Doc</span>
+          <span className="brand-sage">Sage</span>
+        </Link>
+        <div className="topbar-center">{onResults ? <HeaderSearch /> : null}</div>
+        <TopActions />
+      </header>
+      <main className="shell-content">
+        <Outlet />
+      </main>
+    </div>
+  )
+}
 
-        {/* A landmark, so the two nav buttons are distinguishable from the identically
-            named Search button on the search page itself. */}
-        {user ? (
-          <nav aria-label="Main">
-            <Space size="small" className="app-nav">
-              {signedIn ? (
-                <>
-                  <NavLink to="/search" className="nav-link">
-                    {({ isActive }) => (
-                      <Button
-                        type={isActive ? 'default' : 'text'}
-                        icon={<FileSearchOutlined aria-hidden="true" />}
-                      >
-                        Search
-                      </Button>
-                    )}
-                  </NavLink>
-                  <NavLink to="/documents" className="nav-link">
-                    {({ isActive }) => (
-                      <Button
-                        type={isActive ? 'default' : 'text'}
-                        icon={<FolderOpenOutlined aria-hidden="true" />}
-                      >
-                        Documents
-                      </Button>
-                    )}
-                  </NavLink>
-                  {isAdmin ? (
-                    <Tooltip title="Settings">
-                      <Button
-                        type="text"
-                        shape="circle"
-                        aria-label="Settings"
-                        icon={<SettingOutlined aria-hidden="true" />}
-                        onClick={() => navigate('/settings')}
-                      />
-                    </Tooltip>
-                  ) : null}
-                </>
-              ) : null}
-              <AccountMenu />
-            </Space>
-          </nav>
-        ) : null}
-      </Header>
+/** Shown over any screen when the backend cannot be reached at all. */
+function OfflineBanner() {
+  const { phase, error, refresh } = useAuth()
+  if (phase !== 'offline') return null
+  return (
+    <Alert
+      type="warning"
+      banner
+      message={error ?? 'DocSage is not reachable'}
+      action={
+        <Button size="small" onClick={() => void refresh()}>
+          Try again
+        </Button>
+      }
+    />
+  )
+}
 
-      <Content className="app-content">
+/** An old page route, now a dialog over the home page. */
+function DialogRedirect({ dialog }: { dialog: DialogName }) {
+  return <Navigate to={`/?${DIALOG_PARAM}=${dialog}`} replace />
+}
+
+export default function App() {
+  return (
+    <DialogsProvider>
+      <SearchProvider>
+        <OfflineBanner />
         <Routes>
-          <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
-          <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
-          <Route
-            path="/forgot-password"
-            element={<PublicOnly><ForgotPasswordPage /></PublicOnly>}
-          />
-          <Route path="/setup" element={<PublicOnly setup><SetupPage /></PublicOnly>} />
-          {/* Outside the signed-in layout: while a password must change, every library
-              call is refused, so the poller must not start. */}
-          <Route
-            path={CHANGE_PASSWORD_PATH}
-            element={<RequireAuth><ChangePasswordPage /></RequireAuth>}
-          />
-
-          <Route element={<SignedIn />}>
-            <Route path="/" element={<HeroPage />} />
+          <Route path="/" element={<HomePage />} />
+          <Route element={<Shell />}>
             <Route path="/search" element={<SearchPage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/settings" element={<RequireAdmin><SettingsPage /></RequireAdmin>} />
-            <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
-            <Route path="/admin/users" element={<RequireAdmin><UsersPage /></RequireAdmin>} />
+            <Route path="/view/:documentId" element={<ViewerPage />} />
+            <Route
+              path="/drive"
+              element={
+                <RequireAuth what="manage your documents">
+                  <LibraryProvider>
+                    <DrivePage />
+                  </LibraryProvider>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireAuth what="use the admin tools">
+                  <RequireAdmin>
+                    <LibraryProvider>
+                      <AdminPage />
+                    </LibraryProvider>
+                  </RequireAdmin>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RequireAuth what="manage users">
+                  <RequireAdmin>
+                    <UsersPage />
+                  </RequireAdmin>
+                </RequireAuth>
+              }
+            />
           </Route>
-          {/* Anything else, including the old #/indexing, lands on the hero. */}
+
+          {/* Old page routes, kept for bookmarks: each opens its dialog instead. */}
+          <Route path="/login" element={<DialogRedirect dialog="login" />} />
+          <Route path="/register" element={<DialogRedirect dialog="register" />} />
+          <Route path="/forgot-password" element={<DialogRedirect dialog="forgot" />} />
+          <Route path="/settings" element={<DialogRedirect dialog="settings" />} />
+          <Route path="/account/password" element={<DialogRedirect dialog="password" />} />
+          <Route path="/setup" element={<Navigate to="/" replace />} />
+          <Route path="/documents" element={<Navigate to="/drive" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </Content>
-
-      <Footer className="app-footer">
-        DocSage — find knowledge locally. Runs entirely on this machine; no document leaves it.
-      </Footer>
-    </Layout>
+      </SearchProvider>
+    </DialogsProvider>
   )
 }

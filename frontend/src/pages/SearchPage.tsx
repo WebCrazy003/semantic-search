@@ -1,27 +1,31 @@
 // frontend/src/pages/SearchPage.tsx
-import { PlusOutlined } from '@ant-design/icons'
-import { Alert, Button, Drawer, Empty, Grid, Select, Skeleton, Space, Typography } from 'antd'
+import { Alert, Drawer, Empty, Grid, Select, Skeleton, Space, Typography } from 'antd'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useCitedResults } from '../app/AnswerContext'
 import { useAuth } from '../app/AuthContext'
 import { keyOf, useSearchContext } from '../app/SearchContext'
 import { AnswerPanel } from '../components/AnswerPanel'
 import { ResultCard } from '../components/ResultCard'
 import { ResultDetail } from '../components/ResultDetail'
-import { SearchBar } from '../components/SearchBar'
 import { listUsers } from '../services/api'
 import { LANGUAGES, TOP_K_CHOICES } from '../settings/settings'
 
+/**
+ * The results page, laid out like Google's (spec 2026-10-08 §1.1). The query is in the
+ * URL: the header's search box and the home page navigate here, and this page runs
+ * whatever ?q= names. The box itself lives in the header (App.tsx).
+ */
 export function SearchPage() {
-  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const q = params.get('q')?.trim() ?? ''
   const screens = Grid.useBreakpoint()
   const listRef = useRef<HTMLDivElement>(null)
   const {
     query, response, selected, select, topK, setTopK, language, setLanguage, busy, error, run,
     scope, setScope, owner, setOwner, visibility, setVisibility,
   } = useSearchContext()
-  const { isAdmin } = useAuth()
+  const { phase, user, isAdmin } = useAuth()
   const [owners, setOwners] = useState<{ value: string; label: string }[]>([])
 
   // An admin can narrow to one owner, so the select needs everyone's name.
@@ -38,6 +42,18 @@ export function SearchPage() {
       cancelled = true
     }
   }, [isAdmin])
+
+  // A new ?q runs it. Coming back to the same query (from the admin page, say) keeps the
+  // results already on hand rather than searching again. A results address opened
+  // directly waits for the session: searching while it loads would search as a visitor
+  // and then again as the user once it arrived.
+  const sessionKnown = phase !== 'loading'
+  useEffect(() => {
+    if (sessionKnown && q && q !== query) void run(q)
+    // Only a change of URL query (or the session becoming known) should search; query
+    // and run follow from it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, sessionKnown])
 
   const results = response?.results ?? []
 
@@ -121,20 +137,11 @@ export function SearchPage() {
     </>
   )
 
+  if (!q) return <Navigate to="/" replace />
+
   return (
     <div className="page search-page">
-      <div className="search-page-actions">
-        <Button
-          type="dashed"
-          icon={<PlusOutlined aria-hidden="true" />}
-          onClick={() => navigate('/documents')}
-        >
-          Add more documents
-        </Button>
-      </div>
-
-      <div className="search-controls">
-        <SearchBar onSearch={(value) => void run(value)} busy={busy} initialValue={query} />
+      <div className="search-tools">
         <Space size="small" className="search-filters" wrap>
           <Select
             size="small"
@@ -186,7 +193,7 @@ export function SearchPage() {
                 ]}
               />
             </>
-          ) : (
+          ) : user ? (
             <Select
               size="small"
               variant="filled"
@@ -200,7 +207,7 @@ export function SearchPage() {
                 { value: 'public', label: 'Only public' },
               ]}
             />
-          )}
+          ) : null}
         </Space>
       </div>
 
@@ -218,14 +225,22 @@ export function SearchPage() {
         onClose={() => select(null)}
         placement="right"
         mask={!screens.xl}
-        size={Math.min(560, typeof window === 'undefined' ? 560 : window.innerWidth * 0.92)}
+        // Room for a page: half the window, between 560 and 960 pixels, and never wider
+        // than the screen on a phone.
+        size={panelWidth()}
         title={selected?.filename}
         className="detail-drawer"
       >
         {selected ? (
-          <ResultDetail key={keyOf(selected)} hit={selected} query={response?.query} />
+          <ResultDetail hit={selected} query={response?.query} />
         ) : null}
       </Drawer>
     </div>
   )
+}
+
+function panelWidth(): number {
+  if (typeof window === 'undefined') return 560
+  const half = Math.min(960, Math.max(560, window.innerWidth / 2))
+  return Math.min(half, window.innerWidth * 0.96)
 }

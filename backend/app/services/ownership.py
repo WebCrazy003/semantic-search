@@ -54,6 +54,16 @@ def document_id_for(owner_id: str, file_hash: str) -> str:
     return hashlib.sha256(f"user:{owner_id}:{file_hash}".encode()).hexdigest()
 
 
+def within(path: Path, folder: Path) -> bool:
+    """Whether `path` is `folder` or inside it, without touching the disk."""
+    return path.is_relative_to(folder)
+
+
+# Stands in for the user id of someone not logged in. Real ids are uuid4 hex, so no
+# user can ever own a document under this one.
+VISITOR = "-"
+
+
 @dataclass(frozen=True)
 class AccessScope:
     """What a search or a listing may see.
@@ -69,3 +79,8 @@ class AccessScope:
     @property
     def unrestricted(self) -> bool:
         return self.user_id is None
+
+    @classmethod
+    def visitor(cls) -> AccessScope:
+        """Someone who is not logged in: public documents only."""
+        return cls(user_id=VISITOR, mode="public")

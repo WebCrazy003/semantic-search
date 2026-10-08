@@ -20,6 +20,8 @@ from app.services.answer_service import AnswerService
 from app.services.chunk_service import ChunkConfig, Chunker
 from app.services.device_usage import DeviceUsageMonitor
 from app.services.docx_service import DocxService
+from app.services.drive_service import DriveService
+from app.services.drive_store import DriveStore
 from app.services.embedding_service import BgeEmbeddingService, EmbeddingService
 from app.services.extractors import DocumentExtractor, ExtractorRegistry
 from app.services.indexing_service import IndexingService
@@ -53,10 +55,25 @@ class Container:
     # Without a model configured this still exists and answers "unavailable", so the
     # routes need no special case.
     answers: AnswerService = field(default_factory=lambda: AnswerService(model=None))
+    # The document manager's folders. Built from the parts above, in the same database
+    # as the accounts, so no caller (or test) has to assemble it.
+    drive: DriveService = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.drive = DriveService(
+            store=DriveStore(self.settings.access_db_path),
+            manifest=self.manifest,
+            indexing=self.indexing,
+            extractors=self.extractors,
+            documents_dir=self.settings.pdf_directory,
+        )
+        # A file moved by hand on disk keeps its folder when indexing follows it.
+        self.indexing.on_relocated = self.drive.store.relocate
 
     def close(self) -> None:
         self.manifest.close()
         self.access.close()
+        self.drive.store.close()
         self.qdrant.close()
 
 

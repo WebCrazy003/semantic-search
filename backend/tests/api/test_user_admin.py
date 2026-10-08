@@ -149,7 +149,7 @@ class TestPasswords:
 
         fresh = TestClient(app, headers=CSRF)
         login(fresh, "kim", temp)
-        assert fresh.post("/api/search", json={"query": "x"}).status_code == 403
+        assert fresh.get("/api/documents").status_code == 403
 
     def test_a_typed_password_without_forcing_a_change(
         self, client: TestClient, user_client, app  # noqa: ANN001

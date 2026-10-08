@@ -17,6 +17,7 @@ from app.logging_config import get_logger
 from app.models.request_models import AddFolderRequest
 from app.models.response_models import FolderSummary, RemovedFolderResponse
 from app.services.extractors import is_candidate
+from app.services.ownership import within
 
 logger = get_logger("api.folders")
 router = APIRouter(tags=["folders"])
@@ -96,19 +97,12 @@ def remove_folder(
 
     unindexed = 0
     for document in container.manifest.all_documents():
-        if any(_within(Path(known), target) for known in document.known_paths):
+        if any(within(Path(known), target) for known in document.known_paths):
             container.indexing.remove_document(document.document_id)
             unindexed += 1
 
     logger.info("unregistered folder %s, unindexed %d documents", target, unindexed)
     return RemovedFolderResponse(path=str(target), documents_unindexed=unindexed, files_kept=True)
-
-
-def _within(path: Path, folder: Path) -> bool:
-    try:
-        return path.is_relative_to(folder)
-    except ValueError:  # different drives on Windows
-        return False
 
 
 def _summarise(
@@ -126,7 +120,7 @@ def _summarise(
         indexed_documents=sum(
             1
             for document in documents
-            if any(_within(Path(known), path) for known in document.known_paths)
+            if any(within(Path(known), path) for known in document.known_paths)
         ),
         is_default=is_default,
     )

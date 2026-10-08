@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.auth import active_user, scope_for
+from app.auth import reader, scope_for
 from app.deps import Container, get_container
 from app.models.response_models import HealthResponse, ReadinessResponse
 from app.services.access_store import User
@@ -19,12 +19,13 @@ def health() -> HealthResponse:
 
 @router.get("/health/ready", response_model=ReadinessResponse)
 def ready(
-    user: User = Depends(active_user),
+    user: User | None = Depends(reader),
     container: Container = Depends(get_container),
 ) -> ReadinessResponse:
     """Readiness: checks the things a search actually depends on.
 
-    Needs a login. `points` counts only the passages the caller can search.
+    Open to visitors, who need to know whether answers are available. `points` counts
+    only the passages the caller can search, and a visitor is not told about the device.
     """
     try:
         points = container.qdrant.count_points(scope_for(user))
@@ -33,7 +34,7 @@ def ready(
         points, reachable = 0, False
     dimension = int(getattr(container.embedder, "dimension", 0))
     describe = getattr(container.embedder, "device_info", None)
-    device = describe() if callable(describe) else None
+    device = describe() if callable(describe) and user is not None else None
     return ReadinessResponse(
         status="ready" if reachable and dimension > 0 else "degraded",
         qdrant_reachable=reachable,
@@ -48,5 +49,5 @@ def ready(
         embedding_memory_gb=device.memory_gb if device else None,
         embedding_fallback_reason=device.fallback_reason if device else None,
         answers_available=container.answers.available(),
-        answer_model=container.answers.model_name,
+        answer_model=container.answers.model_name if user is not None else None,
     )

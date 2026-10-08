@@ -102,3 +102,34 @@ class BulkVisibilityRequest(BaseModel):
 
 class AuthSettingsRequest(BaseModel):
     registration_open: bool
+
+
+# ------------------------------------------------------------ document manager
+# `tree` is "me", or for an admin a user id or "library" (2026-10-08 spec §3.5).
+
+
+class CreateFolderRequest(BaseModel):
+    tree: str = "me"
+    parent_id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+
+
+class RenameFolderRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+class DriveMoveRequest(BaseModel):
+    tree: str = "me"
+    file_ids: list[str] = Field(default_factory=list, max_length=1000)
+    folder_ids: list[str] = Field(default_factory=list, max_length=1000)
+    # The folder to move into; None is the top of the tree.
+    to: str | None = None
+
+
+class DriveIndexRequest(BaseModel):
+    tree: str = "me"
+    # None: every file in the tree that is not indexed yet.
+    file_ids: list[str] | None = Field(default=None, max_length=1000)
+    # Re-read files that already have a verdict, as Retry does for a failed one.
+    force: bool = False
+

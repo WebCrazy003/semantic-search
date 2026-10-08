@@ -1,11 +1,20 @@
 /* frontend/src/styles.css
-   Only what Ant Design does not do for us: the result-card clamp, the aggregate
-   collapse transition, the hand-drawn charts, and the admin text views. Colours come
+   Only what Ant Design does not do for us: the home and results layout, the result-card
+   clamp, the document viewer, the document manager, and the admin text views. Colours come
    from antd's design tokens via CSS variables so light and dark both work without a
    second set of rules. */
 
 :root {
-  --hero-lens: #ffffff;
+  --page-bg: #ffffff;
+  --passage-hit: rgba(255, 171, 0, 0.35);
+  --term-hit: rgba(255, 235, 59, 0.25);
+  --viewer-surface: #e8eaed;
+  --search-box-bg: #ffffff;
+  --search-box-border: #dfe1e5;
+  --search-box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
+  --brand-doc: #202124;
+  --brand-sage: #4285f4;
+  --quiet-text: #70757a;
   --error: #ff4d4f;
   --overlap: rgba(250, 173, 20, 0.28);
   --surface-subtle: rgba(0, 0, 0, 0.02);
@@ -20,7 +29,16 @@
 }
 
 :root[data-theme='dark'] {
-  --hero-lens: #141414;
+  --page-bg: #202124;
+  --passage-hit: rgba(255, 183, 77, 0.4);
+  --term-hit: rgba(255, 241, 118, 0.22);
+  --viewer-surface: #17181a;
+  --search-box-bg: #303134;
+  --search-box-border: #5f6368;
+  --search-box-shadow: 0 1px 6px rgba(23, 23, 23, 0.6);
+  --brand-doc: #ffffff;
+  --brand-sage: #8ab4f8;
+  --quiet-text: #9aa0a6;
   --overlap: rgba(250, 173, 20, 0.22);
   --surface-subtle: rgba(255, 255, 255, 0.04);
   --relevance-strong: #49aa19;
@@ -34,6 +52,194 @@
 
 body {
   margin: 0;
+  background: var(--page-bg);
+  /* antd sets its font on its own components only; the wordmark and footer are ours. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', 'PingFang SC', 'Malgun Gothic', sans-serif;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+/* The wordmark, in the same two colours everywhere: big on the home page, small in
+   the header. */
+.brand-doc {
+  color: var(--brand-doc);
+}
+
+.brand-sage {
+  color: var(--brand-sage);
+}
+
+.brand {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.top-actions {
+  flex: none;
+}
+
+.avatar-button {
+  padding: 2px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.avatar-button:hover,
+.avatar-button:focus-visible {
+  box-shadow: 0 0 0 4px var(--ant-color-fill-secondary, rgba(0, 0, 0, 0.06));
+  outline: none;
+}
+
+.account-who {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.account-item-external {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-item-external .anticon {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* Home: nothing but the wordmark and the box, a little above the middle. */
+.home {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-top {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 12px;
+}
+
+.home-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18vh 16px 0;
+}
+
+.wordmark {
+  margin: 0 0 28px;
+  font-size: clamp(56px, 9vw, 92px);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.home-footer {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--quiet-text);
+}
+
+/* The box itself: a pill like Google's, lit by a shadow on hover and focus. */
+.search-bar {
+  width: 100%;
+}
+
+.search-bar-home {
+  max-width: 584px;
+}
+
+.search-bar-header {
+  max-width: 692px;
+}
+
+.search-bar .ant-input-affix-wrapper {
+  border-radius: 24px;
+  background: var(--search-box-bg);
+  border-color: var(--search-box-border);
+  padding-inline: 16px;
+}
+
+.search-bar-home .ant-input-affix-wrapper {
+  height: 46px;
+}
+
+.search-bar .ant-input-affix-wrapper:hover,
+.search-bar .ant-input-affix-wrapper-focused {
+  border-color: transparent;
+  box-shadow: var(--search-box-shadow);
+}
+
+.search-bar .ant-input {
+  background: transparent;
+}
+
+.search-bar .ant-input-prefix {
+  margin-inline-end: 12px;
+  color: var(--quiet-text);
+}
+
+/* Every other screen: a slim header with the wordmark, the box on results, and the
+   same top-right buttons. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 14px 20px 12px 28px;
+  background: var(--page-bg);
+  border-bottom: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+}
+
+.topbar-center {
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar .brand {
+  flex: none;
+  width: 120px;
+}
+
+.shell-content {
+  padding: 16px 28px 32px;
+}
+
+/* Results line up under the header's search box, past the wordmark, as Google's do. */
+.page.search-page {
+  max-width: none;
+  margin: 0 0 0 calc(120px + 28px);
+}
+
+@media (max-width: 767px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 12px;
+  }
+  .topbar-center {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .shell-content {
+    padding: 12px;
+  }
+  .topbar .brand {
+    width: auto;
+  }
+  .page.search-page {
+    margin: 0;
+  }
 }
 
 .visually-hidden {
@@ -49,105 +255,6 @@ body {
 }
 
 /* ------------------------------------------------------------------ shell */
-
-.app-shell {
-  min-height: 100vh;
-}
-
-/*
-  The header bar is dark in both themes, so its contents have to be light in both.
-  Ant Design colours text for the page background, not for this bar, which in the light
-  theme left dark text on a dark bar.
-*/
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-inline: 24px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  --header-text: rgba(255, 255, 255, 0.92);
-  --header-text-dim: rgba(255, 255, 255, 0.68);
-}
-
-.app-header .brand,
-.app-header .brand-name,
-.app-header .ant-typography,
-.app-header .anticon {
-  color: var(--header-text);
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 18px;
-  text-decoration: none;
-}
-
-.brand-name {
-  font-size: 21px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-/* The wordmark: deep navy and blue on the page, lightened for the dark header bar so
-   "Doc" does not disappear into it. */
-.brand-doc {
-  color: #12305c;
-}
-
-.brand-sage {
-  color: #1f86e8;
-}
-
-.app-header .brand-doc {
-  color: #ffffff;
-}
-
-.app-header .brand-sage {
-  color: #5cb0f7;
-}
-
-:root[data-theme='dark'] .brand-doc {
-  color: #dce9f8;
-}
-
-.nav-link {
-  text-decoration: none;
-}
-
-/* Text buttons in the bar: legible at rest, clearly lit on hover. */
-.app-header .ant-btn-variant-text,
-.app-header .ant-btn-variant-text .anticon {
-  color: var(--header-text-dim);
-}
-
-.app-header .ant-btn-variant-text:not(:disabled):hover,
-.app-header .ant-btn-variant-text:not(:disabled):hover .anticon {
-  color: var(--header-text);
-  background: rgba(255, 255, 255, 0.12);
-}
-
-/* The current page keeps antd's solid button, which supplies its own contrast. */
-.app-header .ant-btn-variant-outlined {
-  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-}
-
-.app-header .ant-btn:focus-visible {
-  outline: 2px solid var(--header-text);
-  outline-offset: 2px;
-}
-
-.app-content {
-  padding: 24px;
-}
-
-.app-footer {
-  text-align: center;
-}
 
 .page {
   max-width: 1320px;
@@ -170,119 +277,20 @@ body {
   margin-block: 12px;
 }
 
-/* -------------------------------------------------------------------- hero */
-
-.hero-copy {
-  width: 100%;
-}
-
-.hero-badge {
-  align-self: flex-start;
-}
-
-.hero-title.ant-typography {
-  margin: 0;
-  font-size: clamp(34px, 5vw, 54px);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-}
-
-.hero-tagline {
-  display: block;
-  margin-top: 6px;
-  font-size: clamp(17px, 2vw, 22px);
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
-}
-
-.hero-logo-panel {
-  background: #ffffff;
-  border-radius: 20px;
-  padding: 12px;
-  box-shadow: 0 10px 30px rgba(15, 45, 85, 0.12);
-  max-width: 380px;
-  width: 100%;
-}
-
-.hero-logo {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 12px;
-}
-
-.hero-lede.ant-typography {
-  font-size: 17px;
-  max-width: 54ch;
-  margin-bottom: 0;
-}
-
-.hero-action {
-  min-width: 210px;
-}
-
-.hero-stats .ant-statistic-content {
-  font-size: 24px;
-}
-
-.hero-art-col {
-  display: flex;
-  justify-content: center;
-}
-
-.hero-art {
-  width: 100%;
-  max-width: 380px;
-  height: auto;
-}
-
-.hero-features {
-  margin-top: 40px;
-}
-
-.feature-card {
-  height: 100%;
-}
-
-.feature-icon {
-  font-size: 28px;
-  color: var(--ant-color-primary, #1677ff);
-  margin-bottom: 8px;
-}
-
-.feature-body.ant-typography {
-  margin: 4px 0 0;
-  font-size: 13px;
-}
-
 /* ------------------------------------------------------------------ search */
 
-.search-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-/* Like a web search page: one left-aligned column at reading width, the search bar on
-   the same edge as the results under it. */
-.search-controls,
+/* Like a web search page: one left-aligned column at reading width, lined up with
+   the header's search box above it. */
+.search-tools,
 .result-meta,
 .result-list,
+.answer-panel,
 .search-page .page-alert {
-  max-width: 720px;
+  max-width: 692px;
 }
 
-/* R3.1: the input is capped rather than stretched across the window. */
-.search-bar {
-  width: 100%;
-  max-width: 720px;
-}
-
-.search-bar-inner {
-  width: 100%;
+.search-tools {
+  margin-bottom: 12px;
 }
 
 .result-meta {
@@ -543,12 +551,6 @@ body {
   color: var(--ant-color-primary, #1677ff);
 }
 
-.search-page-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
 .detail-head {
   display: flex;
   align-items: center;
@@ -589,236 +591,21 @@ body {
   margin-top: 20px;
 }
 
-/* --------------------------------------------------------------- documents */
-
-.documents-page > * + * {
-  margin-top: 16px;
-}
-
-.aggregate-card {
-  height: 100%;
-}
-
-/*
-  The minimise animation (R4.3). grid-template-rows 1fr -> 0fr transitions to the
-  content's own height with no JavaScript measurement; overflow:hidden does the
-  clipping. .no-motion is applied when the animations setting is off or the operating
-  system asks for reduced motion, and lands on the end state immediately.
-*/
-.aggregate-wrap {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms ease-out, opacity 240ms ease-out;
-  opacity: 1;
-}
-
-.aggregate-wrap.minimised {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-
-.aggregate-wrap.no-motion {
-  transition: none;
-}
-
-.aggregate-inner {
-  overflow: hidden;
-  min-height: 0;
-}
-
-.aggregate-strip {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.aggregate-summary-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--surface-subtle);
-}
-
-.add-documents-card {
-  animation: card-in 240ms ease-out;
-}
-
-.no-motion .add-documents-card,
-:root[data-motion='reduced'] .add-documents-card {
-  animation: none;
-}
-
-@keyframes card-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aggregate-wrap {
-    transition: none;
-  }
-  .add-documents-card {
-    animation: none;
-  }
-}
-
-.doc-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 420px;
-}
-
-.doc-title,
-.doc-error,
-.doc-path {
-  font-size: 12px;
-}
-
-.doc-path {
-  word-break: break-all;
-  opacity: 0.7;
-}
-
-.folder-row {
-  width: 100%;
-  max-width: 640px;
-}
-
-.folder-path {
-  word-break: break-all;
-}
-
-.folder-missing {
-  opacity: 0.7;
-}
-
-.hint-small.ant-typography {
-  font-size: 12px;
-}
-
-.import-panel > * + * {
-  margin-top: 12px;
-}
-
-.import-submit {
-  margin-top: 12px;
-}
-
-.rejected {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.job-progress > * + * {
-  margin-top: 12px;
-}
-
-.index-failures {
-  margin: 0;
-  padding-left: 18px;
-}
-
-.current-file {
-  word-break: break-all;
-}
-
-.clear-result.ant-typography {
-  margin: 12px 0 0;
-}
-
-/* ------------------------------------------------------------------ charts */
-
-.chart {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.donut-chart {
-  align-items: center;
-}
-
-.donut {
-  width: 120px;
-  height: 120px;
-}
-
-.donut-value {
-  font-size: 22px;
-  font-weight: 600;
-  fill: currentColor;
-}
-
-.donut-label {
-  font-size: 9px;
-  fill: currentColor;
-  opacity: 0.65;
-}
-
-.chart-legend {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 12px;
-}
-
-.chart-legend li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.chart-legend strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.bar-row {
-  display: grid;
-  grid-template-columns: minmax(0, 7em) 1fr auto;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.bar-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bar-value {
-  font-variant-numeric: tabular-nums;
-}
-
-.bar-row .ant-progress {
-  margin: 0;
-}
-
 /* --------------------------------------------------------------- settings */
 
 .settings-card {
   margin-top: 16px;
+}
+
+.settings-section {
+  padding-top: 8px;
+}
+
+.settings-reset {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
 }
 
 .accent-swatch {
@@ -968,29 +755,25 @@ body {
   opacity: 0.75;
 }
 
-@media (max-width: 575px) {
-  .app-content {
-    padding: 16px;
-  }
-  .app-header {
-    padding-inline: 12px;
-  }
-  .brand-name {
-    display: none;
-  }
-}
 
 /* ---------------------------------------------------------------- accounts */
 
-.auth-page {
-  display: flex;
-  justify-content: center;
-  padding-block: 32px;
+.auth-card {
+  padding: 8px 8px 0;
 }
 
-.auth-card {
-  width: 100%;
-  max-width: 420px;
+/* Switches the account dialog to another step; a button, styled as a link. */
+.dialog-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ant-color-link, #1677ff);
+  cursor: pointer;
+}
+
+.dialog-link:hover {
+  text-decoration: underline;
 }
 
 .auth-card-head {
@@ -1029,13 +812,6 @@ body {
   padding: 64px 0;
 }
 
-.account-button .account-name {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .account-who {
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
 }
@@ -1057,9 +833,487 @@ body {
   margin-bottom: 12px;
 }
 
-@media (max-width: 575px) {
-  /* The account button keeps its icon; the name would crowd out the nav. */
-  .account-button .account-name {
-    display: none;
+/* ------------------------------------------------------------------ viewer */
+
+.document-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+}
+
+.viewer-zoom {
+  display: inline-block;
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-loading {
+  display: flex;
+  justify-content: center;
+  padding: 64px 0;
+}
+
+.viewer-fallback {
+  overflow: auto;
+  padding: 0 16px 16px;
+}
+
+.pdf-view,
+.docx-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--viewer-surface);
+}
+
+.pdf-view {
+  padding: 16px;
+}
+
+.pdf-page {
+  position: relative;
+  margin-inline: auto;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+/* pdf.js's own text-layer rules, cut down to what selection and our boxes need. */
+.pdf-page .textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-page .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-page .textLayer > :not(.markedContent),
+.pdf-page .textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.pdf-page .textLayer .markedContent {
+  display: contents;
+}
+
+.pdf-page .textLayer ::selection {
+  background: rgba(0, 0, 255, 0.25);
+}
+
+/* Under the text layer, so the text above stays selectable. */
+.pdf-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-marks .passage-hit,
+.pdf-marks .term-hit {
+  position: absolute;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+
+.pdf-marks .passage-hit {
+  background: var(--passage-hit);
+}
+
+.pdf-marks .term-hit {
+  background: var(--term-hit);
+}
+
+.docx-view .docx-wrapper {
+  background: transparent;
+  padding: 16px;
+}
+
+::highlight(docsage-passage),
+.passage-hit-mark {
+  background-color: var(--passage-hit);
+  color: inherit;
+}
+
+::highlight(docsage-term) {
+  background-color: var(--term-hit);
+}
+
+/* The result panel holds the document: no padding of its own, the toolbar is its top. */
+.detail-drawer .ant-drawer-body {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A document in a tab of its own, filling the space under the header. */
+.viewer-page {
+  height: calc(100vh - 69px - 16px - 32px);
+  border: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.result-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.result-detail .document-viewer {
+  flex: 1;
+}
+
+.result-passage {
+  padding: 0 4px;
+}
+
+.result-footer {
+  padding: 8px 12px;
+  border-top: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+  max-height: 40%;
+  overflow: auto;
+}
+
+/* ------------------------------------------------------------ document manager */
+
+.drive {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+  min-height: calc(100vh - 69px - 48px);
+}
+
+.drive-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 85px;
+  align-self: start;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+}
+
+.drive-new {
+  align-self: flex-start;
+  margin-bottom: 12px;
+  border-radius: 16px;
+  padding-inline: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.rail-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-entry:hover {
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.rail-entry.active {
+  background: var(--ant-color-primary-bg, #e6f4ff);
+  font-weight: 600;
+}
+
+.rail-tree {
+  margin: 2px 0 6px 12px;
+  background: transparent;
+}
+
+.rail-tree .ant-tree-node-content-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.rail-folder {
+  flex: 1;
+  min-width: 0;
+}
+
+.rail-group {
+  margin-top: 8px;
+}
+
+.rail-group-title {
+  display: block;
+  padding: 4px 16px;
+  font-size: 12px;
+}
+
+.drive-summary {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+  font-size: 13px;
+  color: var(--quiet-text);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drive-index-now {
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+
+.drive-attention {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--ant-color-warning-text, #d48806);
+  cursor: pointer;
+}
+
+.drive-attention[aria-pressed='true'] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.drive-main {
+  min-width: 0;
+  border-radius: 12px;
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+  transition: outline-color 0.15s;
+}
+
+.drive-main.dropping {
+  outline-color: var(--ant-color-primary, #1677ff);
+}
+
+.drive-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.drive-breadcrumb {
+  font-size: 18px;
+}
+
+.crumb {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.drive-title.ant-typography {
+  margin: 0;
+}
+
+.drive-filter {
+  width: 200px;
+}
+
+.drive-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.drive-folder-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.drive-folder-icon {
+  color: #5f6368;
+}
+
+:root[data-theme='dark'] .drive-folder-icon {
+  color: #9aa0a6;
+}
+
+.drive-pdf {
+  color: #d93025;
+}
+
+.drive-word {
+  color: #1a73e8;
+}
+
+.drive-public {
+  color: var(--quiet-text);
+  font-size: 12px;
+}
+
+.drive-table .ant-table-row {
+  cursor: default;
+}
+
+.state-tag {
+  margin: 0;
+}
+
+.drive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.drive-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 10px;
+  cursor: default;
+  user-select: none;
+}
+
+.drive-card.selected {
+  border-color: var(--ant-color-primary, #1677ff);
+  background: var(--ant-color-primary-bg, #e6f4ff);
+}
+
+.drive-card-icon {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.drive-context-menu {
+  position: fixed;
+  z-index: 1050;
+  min-width: 200px;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  overflow: hidden;
+}
+
+.drive-context-menu .ant-menu {
+  border-inline-end: 0 !important;
+}
+
+.move-tree {
+  max-height: 50vh;
+  overflow: auto;
+}
+
+/* The upload panel, at the bottom right like Drive's. */
+.upload-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 0;
+  z-index: 20;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: var(--ant-color-bg-elevated, #ffffff);
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+  overflow: hidden;
+}
+
+.upload-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 10px 16px;
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+}
+
+.upload-panel-rows {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 300px;
+  overflow: auto;
+}
+
+.upload-row {
+  padding: 6px 16px;
+}
+
+.upload-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upload-row-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-row-stage {
+  font-size: 12px;
+}
+
+.settings-danger {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ant-color-split, rgba(5, 5, 5, 0.06));
+}
+
+@media (max-width: 767px) {
+  .drive {
+    grid-template-columns: 1fr;
+  }
+  .drive-rail {
+    position: static;
+    max-height: none;
   }
 }
+

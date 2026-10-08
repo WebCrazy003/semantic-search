@@ -56,9 +56,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       componentSize={compact ? 'small' : 'middle'}
       theme={{
         algorithm,
-        token: { colorPrimary: settings.accent, colorLink: settings.accent },
-        // antd's own component motion follows the same preference as ours.
-        ...(reducedMotion ? { components: {} } : {}),
+        token: {
+          colorPrimary: settings.accent,
+          colorLink: settings.accent,
+          // Google's dark grey rather than antd's near-black, so the home page and the
+          // pill search box read as they do in the mockup (spec 2026-10-08 §1.1).
+          ...(dark ? { colorBgBase: '#202124' } : {}),
+          // antd's own component motion follows the same preference as ours.
+          ...(reducedMotion ? { motion: false } : {}),
+        },
       }}
       wave={{ disabled: reducedMotion }}
     >

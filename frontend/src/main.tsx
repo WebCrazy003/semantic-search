@@ -14,8 +14,8 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SettingsProvider>
       <ThemeProvider>
-        {/* The library poller and the search state mount inside App's signed-in
-            layout, so they exist only while someone is logged in. */}
+        {/* The search state mounts inside App for everyone; the library poller only on
+            the pages that need a login. */}
         <AuthProvider>
           <HashRouter>
             <App />

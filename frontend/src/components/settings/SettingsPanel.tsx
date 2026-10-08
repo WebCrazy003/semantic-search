@@ -1,13 +1,20 @@
-// frontend/src/pages/SettingsPage.tsx
+// frontend/src/components/settings/SettingsPanel.tsx
+// The settings modal's body. What it shows depends on who is looking: anyone gets
+// Appearance and Search, a logged-in user also System, an admin also Developer and
+// Administration. Everything but the admin links is stored in this browser only.
 import { ExperimentOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons'
-import { Button, Card, Form, Popconfirm, Segmented, Select, Space, Switch, Tabs, Typography } from 'antd'
+import { App as AntApp, Button, Form, Popconfirm, Segmented, Select, Space, Switch, Tabs, Typography } from 'antd'
 import type { ReactNode } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { AnswersSwitch } from '../components/AnswersSwitch'
-import { AppearanceSettings } from '../components/AppearanceSettings'
-import { DeviceStatus } from '../components/DeviceStatus'
-import { LANGUAGES, TOP_K_CHOICES, type PreviewLines } from '../settings/settings'
-import { useSettings } from '../settings/SettingsContext'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../../app/AuthContext'
+import { clearIndex } from '../../services/api'
+import { useDialogs } from '../../app/DialogsContext'
+import { LANGUAGES, TOP_K_CHOICES, type PreviewLines } from '../../settings/settings'
+import { useSettings } from '../../settings/SettingsContext'
+import { AnswersSwitch } from '../AnswersSwitch'
+import { AppearanceSettings } from '../AppearanceSettings'
+import { DeviceStatus } from '../DeviceStatus'
 
 const TABS = ['appearance', 'search', 'developer', 'administration', 'system'] as const
 type TabKey = (typeof TABS)[number]
@@ -27,22 +34,57 @@ const FORM_LAYOUT = {
   colon: false,
 }
 
-export function SettingsPage() {
+// The last tab opened, so the modal reopens where it was left. Per browser, like the
+// settings themselves; a private window simply starts on Appearance.
+const TAB_STORAGE_KEY = 'docsage.settingsTab'
+
+function readTab(): string | null {
+  try {
+    return window.localStorage.getItem(TAB_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeTab(tab: TabKey): void {
+  try {
+    window.localStorage.setItem(TAB_STORAGE_KEY, tab)
+  } catch {
+    // Not fatal: the modal opens on the first tab next time.
+  }
+}
+
+/** Which tabs someone sees, in order. */
+export function tabsFor(signedIn: boolean, isAdmin: boolean): TabKey[] {
+  return TABS.filter((key) => {
+    if (key === 'developer' || key === 'administration') return isAdmin
+    if (key === 'system') return signedIn
+    return true
+  })
+}
+
+export function SettingsPanel() {
   const navigate = useNavigate()
+  const { user, isAdmin } = useAuth()
+  const { close } = useDialogs()
   const { settings, update, reset } = useSettings()
-  // The open tab is in the URL, so a link can land on it and Back returns to it.
-  const [params, setParams] = useSearchParams()
-  const requested = params.get('tab')
-  const tab: TabKey = TABS.includes(requested as TabKey) ? (requested as TabKey) : 'appearance'
+  const visible = tabsFor(!!user, isAdmin)
+  const [chosen, setChosen] = useState<string | null>(() => readTab())
+  const tab: TabKey = visible.includes(chosen as TabKey) ? (chosen as TabKey) : visible[0]
+
+  function go(path: string) {
+    close()
+    navigate(path)
+  }
 
   const appearance = (
-    <Card className="settings-card">
+    <div className="settings-section">
       <AppearanceSettings />
-    </Card>
+    </div>
   )
 
   const search = (
-    <Card className="settings-card">
+    <div className="settings-section">
       <Form {...FORM_LAYOUT}>
         <AnswersSwitch />
 
@@ -90,11 +132,11 @@ export function SettingsPage() {
           />
         </Form.Item>
       </Form>
-    </Card>
+    </div>
   )
 
   const developer = (
-    <Card className="settings-card">
+    <div className="settings-section">
       <Form {...FORM_LAYOUT}>
         <Form.Item
           label="Developer mode"
@@ -118,16 +160,16 @@ export function SettingsPage() {
           />
         </Form.Item>
       </Form>
-    </Card>
+    </div>
   )
 
   const administration = (
-    <Card className="settings-card">
+    <div className="settings-section">
       <Space wrap className="settings-admin-links">
         <Button
           type="primary"
           icon={<TeamOutlined aria-hidden="true" />}
-          onClick={() => navigate('/admin/users')}
+          onClick={() => go('/admin/users')}
         >
           Manage users
         </Button>
@@ -137,20 +179,21 @@ export function SettingsPage() {
         document was split into passages. Useful when a search result looks wrong and you want
         to know whether the cause is extraction, chunking, or the search itself.
       </Typography.Paragraph>
-      <Button icon={<ExperimentOutlined aria-hidden="true" />} onClick={() => navigate('/admin')}>
+      <Button icon={<ExperimentOutlined aria-hidden="true" />} onClick={() => go('/admin')}>
         Open the admin page
       </Button>
-    </Card>
+      <ClearIndex />
+    </div>
   )
 
   const system = (
-    <Card className="settings-card">
+    <div className="settings-section">
       <Typography.Paragraph type="secondary">
         These settings are stored in this browser only. They are never sent to the search
         service, and no document or query leaves this machine.
       </Typography.Paragraph>
       <DeviceStatus />
-    </Card>
+    </div>
   )
 
   const panels: Record<TabKey, ReactNode> = {
@@ -162,19 +205,65 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="page settings-page">
-      <div className="page-head">
-        <Typography.Title level={3}>Settings</Typography.Title>
+    <div className="settings-panel">
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => {
+          setChosen(key)
+          writeTab(key as TabKey)
+        }}
+        items={visible.map((key) => ({ key, label: TAB_LABEL[key], children: panels[key] }))}
+      />
+      <div className="settings-reset">
         <Popconfirm title="Reset every setting to its default?" okText="Reset" onConfirm={reset}>
           <Button icon={<ReloadOutlined aria-hidden="true" />}>Reset to defaults</Button>
         </Popconfirm>
       </div>
+    </div>
+  )
+}
 
-      <Tabs
-        activeKey={tab}
-        onChange={(key) => setParams({ tab: key }, { replace: true })}
-        items={TABS.map((key) => ({ key, label: TAB_LABEL[key], children: panels[key] }))}
-      />
+/**
+ * Drop every passage and document record, for every user. Here rather than on the
+ * document manager, which is everyone's page (spec 2026-10-08 §3.1).
+ */
+function ClearIndex() {
+  const { message } = AntApp.useApp()
+  const [busy, setBusy] = useState(false)
+
+  async function clear() {
+    setBusy(true)
+    try {
+      const result = await clearIndex()
+      message.success(
+        `Cleared ${result.documents_removed} documents and ${result.passages_removed} passages. The files were kept.`,
+      )
+    } catch (caught) {
+      message.error(caught instanceof Error ? caught.message : 'Could not clear the index')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="settings-danger">
+      <Typography.Title level={5}>Clear the index</Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Removes every passage and every document record, for every user. The files, the
+        folders and which documents are public are kept: index them again from the
+        document manager to bring everything back.
+      </Typography.Paragraph>
+      <Popconfirm
+        title="Clear all indexing?"
+        description="Nothing will be searchable until it is indexed again."
+        okText="Yes, clear it"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => void clear()}
+      >
+        <Button danger loading={busy}>
+          Clear all indexing
+        </Button>
+      </Popconfirm>
     </div>
   )
 }

@@ -13,9 +13,11 @@ from app.models.response_models import (
     IndexStartedResponse,
     IndexStatusResponse,
     JobSummary,
+    RunFileView,
 )
 from app.services.access_store import User
 from app.services.device_usage import usage_as_dict
+from app.services.indexing_service import RunningError
 from app.services.ownership import LIBRARY, user_folder
 
 router = APIRouter(tags=["indexing"])
@@ -88,6 +90,17 @@ def index_status(
         snapshot = snapshot.model_copy(
             update={"directory": None, "current_file": None, "failures": []}
         )
+    # The upload panel's rows: the caller's own files, in this run and queued behind it.
+    mine = snapshot.scope == user.user_id
+    queued = [
+        RunFileView(path=str(path), name=path.name, state="waiting")
+        for request in container.indexing.queued()
+        if request.scope == user.user_id
+        for path in request.paths or ()
+    ]
+    snapshot = snapshot.model_copy(
+        update={"files": snapshot.files if mine else [], "queued_files": queued}
+    )
     if snapshot.status != "running" or container.device_monitor is None:
         return snapshot
 
@@ -138,10 +151,10 @@ def clear_index(container: Container = Depends(get_container)) -> ClearIndexResp
     Files, job history and which documents are public are all kept, so a full rescan
     brings every document back with its owner and its visibility.
     """
-    if container.indexing.is_running:
-        raise HTTPException(status_code=409, detail="An indexing run is in progress")
-
-    documents, passages = container.indexing.clear_index()
+    try:
+        documents, passages = container.indexing.clear_index()
+    except RunningError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return ClearIndexResponse(
         documents_removed=documents, passages_removed=passages, files_kept=True
     )

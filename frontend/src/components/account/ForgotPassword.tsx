@@ -1,21 +1,28 @@
-// frontend/src/pages/ForgotPasswordPage.tsx
+// frontend/src/components/account/ForgotPassword.tsx
 // Forgot password: ask with a username, wait for an administrator to approve, then set a
 // new password in this same browser.
 //
 // The request token never appears on screen. It is kept in this browser's storage, so
 // closing the tab and coming back resumes the request, and only this browser can finish
-// it. Storage can be missing or refuse (a private window); the page then still works for
-// as long as it stays open.
+// it. Storage can be missing or refuse (a private window); the dialog then still works
+// for as long as it stays open.
 
 import { ClockCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, Form, Input, Result, Space, Spin, Typography } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../app/AuthContext'
-import { FormError } from '../app/guards'
-import { AuthCard, PASSWORD_HINT, PASSWORD_RULES, errorText, matches } from '../components/AuthCard'
-import * as api from '../services/api'
-import type { ResetState } from '../services/api'
+import { useAuth } from '../../app/AuthContext'
+import { useDialogs } from '../../app/DialogsContext'
+import * as api from '../../services/api'
+import type { ResetState } from '../../services/api'
+import {
+  AuthCard,
+  DialogLink,
+  FormError,
+  PASSWORD_HINT,
+  PASSWORD_RULES,
+  errorText,
+  matches,
+} from './AuthCard'
 
 export const RESET_STORAGE_KEY = 'docsage.resetRequest'
 const POLL_MS = 15_000
@@ -40,7 +47,7 @@ function writeStored(value: Stored | null): void {
     if (value) window.localStorage.setItem(RESET_STORAGE_KEY, JSON.stringify(value))
     else window.localStorage.removeItem(RESET_STORAGE_KEY)
   } catch {
-    // Not fatal: the request still works while this page stays open.
+    // Not fatal: the request still works while this dialog stays open.
   }
 }
 
@@ -48,7 +55,7 @@ function lapsed(request: Stored): boolean {
   return new Date(request.expiresAt).getTime() <= Date.now()
 }
 
-export function ForgotPasswordPage() {
+export function ForgotPassword() {
   const [request, setRequest] = useState<Stored | null>(() => readStored())
   const [state, setState] = useState<ResetState | null>(null)
 
@@ -131,7 +138,7 @@ function RequestForm({ onRequested }: { onRequested: (stored: Stored) => void })
     <AuthCard
       title="Reset your password"
       subtitle="Enter your username. An administrator will be asked to approve the reset."
-      footer={<Link to="/login">Back to log in</Link>}
+      footer={<BackToLogin />}
     >
       <FormError message={error} />
       <Form layout="vertical" onFinish={(values) => void submit(values)} requiredMark={false}>
@@ -154,7 +161,7 @@ function Waiting({ request, onCancel }: { request: Stored; onCancel: () => void 
   return (
     <AuthCard
       title="Waiting for an administrator"
-      footer={<Link to="/login">Back to log in</Link>}
+      footer={<BackToLogin />}
     >
       <Result
         icon={<ClockCircleOutlined />}
@@ -162,8 +169,8 @@ function Waiting({ request, onCancel }: { request: Stored; onCancel: () => void 
         subTitle={
           <Space direction="vertical" size={4}>
             <span>
-              Once an administrator approves it, this page lets you set a new password. You can
-              close it and come back later in this browser.
+              Once an administrator approves it, this dialog lets you set a new password. You
+              can close it and come back later in this browser.
             </span>
             <span>
               The request expires on {new Date(request.expiresAt).toLocaleString()}. If nothing
@@ -187,7 +194,7 @@ function Ended({ state, onRestart }: { state: ResetState; onRestart: () => void 
           ? 'A newer request replaced this one.'
           : 'This request expired before it was approved.'
   return (
-    <AuthCard title="Reset your password" footer={<Link to="/login">Back to log in</Link>}>
+    <AuthCard title="Reset your password" footer={<BackToLogin />}>
       <Result
         status="warning"
         title={message}
@@ -203,7 +210,6 @@ function Ended({ state, onRestart }: { state: ResetState; onRestart: () => void 
 
 function NewPasswordForm({ request, onDone }: { request: Stored; onDone: () => void }) {
   const { adopt } = useAuth()
-  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -214,7 +220,6 @@ function NewPasswordForm({ request, onDone }: { request: Stored; onDone: () => v
       const me = await api.completePasswordReset(request.token, password)
       onDone()
       adopt(me.user)
-      navigate('/', { replace: true })
     } catch (caught) {
       setError(errorText(caught, 'Could not set the new password'))
     } finally {
@@ -252,4 +257,9 @@ function NewPasswordForm({ request, onDone }: { request: Stored; onDone: () => v
       </Typography.Paragraph>
     </AuthCard>
   )
+}
+
+function BackToLogin() {
+  const { show } = useDialogs()
+  return <DialogLink onClick={() => show('login')}>Back to log in</DialogLink>
 }

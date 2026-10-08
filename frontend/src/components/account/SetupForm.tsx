@@ -1,18 +1,17 @@
-// frontend/src/pages/SetupPage.tsx
+// frontend/src/components/account/SetupForm.tsx
 import { Button, Form, Input } from 'antd'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../app/AuthContext'
-import { FormError } from '../app/guards'
+import { useAuth } from '../../app/AuthContext'
 import {
   AuthCard,
+  FormError,
   PASSWORD_HINT,
   PASSWORD_RULES,
   USERNAME_HINT,
   USERNAME_RULES,
   errorText,
   matches,
-} from '../components/AuthCard'
+} from './AuthCard'
 
 interface Values {
   username: string
@@ -21,9 +20,8 @@ interface Values {
 }
 
 /** The first account, an administrator. Only accepted from the computer DocSage runs on. */
-export function SetupPage() {
+export function SetupForm() {
   const { setup } = useAuth()
-  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -32,10 +30,8 @@ export function SetupPage() {
     setError(null)
     try {
       await setup(values.username.trim(), values.password)
-      navigate('/', { replace: true })
     } catch (caught) {
       setError(errorText(caught, 'Could not finish setup'))
-    } finally {
       setBusy(false)
     }
   }

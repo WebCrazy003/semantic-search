@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 import warnings
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from qdrant_client import QdrantClient, models
@@ -190,6 +191,19 @@ class QdrantService:
             wait=True,
         )
 
+    def set_location(self, document_id: str, filepath: str, filename: str) -> None:
+        """Point one document's passages at the file's new place. Payload only."""
+        self._client.set_payload(
+            collection_name=self._collection,
+            payload={
+                "filepath": filepath,
+                "filename": filename,
+                "folder": str(Path(filepath).parent),
+            },
+            points=models.Filter(must=[_match("document_id", document_id)]),
+            wait=True,
+        )
+
     def set_visibility(self, document_id: str, visibility: str) -> None:
         """Rewrite one document's visibility in place. Payload only: no re-embedding."""
         self._client.set_payload(
@@ -339,6 +353,16 @@ class QdrantService:
             "status": str(info.status),
             "payload_indexes": sorted((info.payload_schema or {}).keys()),
         }
+
+    def get_chunk(self, document_id: str, chunk_index: int) -> dict[str, Any] | None:
+        """One passage's payload, by its deterministic point id, or None."""
+        points = self._client.retrieve(
+            collection_name=self._collection,
+            ids=[point_id_for(document_id, chunk_index)],
+            with_payload=True,
+            with_vectors=False,
+        )
+        return dict(points[0].payload or {}) if points else None
 
     def iter_chunks(
         self, document_id: str, offset: int = 0, limit: int = 50

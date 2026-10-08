@@ -37,8 +37,9 @@ if (!Element.prototype.scrollIntoView) {
 // Every test starts logged in as an administrator; see __tests__/helpers.tsx.
 beforeEach(async () => {
   window.localStorage.clear()
-  const { ADMIN, givenSession } = await import('./__tests__/helpers')
+  const { ADMIN, givenSession, givenDrive } = await import('./__tests__/helpers')
   givenSession(ADMIN)
+  givenDrive()
 })
 
 afterEach(() => {

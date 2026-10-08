@@ -1,5 +1,6 @@
 # backend/tests/api/test_route_guards.py
-"""Nothing under /api is reachable without a session, except the public list (spec §1.8).
+"""Nothing under /api is reachable without a session, except the public list (spec §1.8)
+and the routes open to visitors, who read public documents only (2026-10-08 spec §1.5).
 
 The routes are read from the app's own OpenAPI schema, not from a hand-kept list, so a
 router added later without a guard fails here.
@@ -24,6 +25,16 @@ PUBLIC = {
     ("POST", "/api/auth/reset-requests/complete"),
 }
 
+# Answer a visitor, scoped to public documents. tests/api/test_visitors.py checks the
+# scope; this only checks that the list is deliberate.
+VISITORS = {
+    ("POST", "/api/search"),
+    ("POST", "/api/ask"),
+    ("GET", "/api/health/ready"),
+    ("GET", "/api/documents/{document_id}/file"),
+    ("GET", "/api/documents/{document_id}/passages/{chunk_index}"),
+}
+
 ADMIN_ONLY_PREFIXES = ("/api/admin/", "/api/folders")
 ADMIN_ONLY = {("POST", "/api/index/clear"), ("PUT", "/api/documents/{document_id}/visibility")}
 
@@ -46,11 +57,11 @@ def _call(test_client: TestClient, method: str, path: str) -> int:
 
 
 def test_the_public_list_is_real(app) -> None:  # noqa: ANN001
-    assert PUBLIC <= set(_routes(app))
+    assert PUBLIC | VISITORS <= set(_routes(app))
 
 
 def test_every_other_route_needs_a_session(app, anon: TestClient) -> None:  # noqa: ANN001
-    guarded = [route for route in _routes(app) if route not in PUBLIC]
+    guarded = [route for route in _routes(app) if route not in PUBLIC | VISITORS]
     assert guarded, "expected guarded routes"
     for method, path in guarded:
         assert _call(anon, method, path) == 401, f"{method} {path} answered without a session"
@@ -70,6 +81,13 @@ def test_admin_routes_refuse_a_regular_user(app, user_client) -> None:  # noqa: 
 
 @pytest.mark.parametrize("method,path", sorted(PUBLIC))
 def test_public_routes_answer_without_a_session(
+    anon: TestClient, method: str, path: str
+) -> None:
+    assert _call(anon, method, path) != 401
+
+
+@pytest.mark.parametrize("method,path", sorted(VISITORS))
+def test_visitor_routes_answer_without_a_session(
     anon: TestClient, method: str, path: str
 ) -> None:
     assert _call(anon, method, path) != 401

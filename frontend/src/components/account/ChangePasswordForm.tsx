@@ -1,14 +1,11 @@
-// frontend/src/pages/ChangePasswordPage.tsx
-// Change your own password. Also the screen someone is held on when an administrator
-// set their password and asked them to choose their own.
-
+// frontend/src/components/account/ChangePasswordForm.tsx
+// Change your own password. Also the dialog someone is held in, unable to close it, when
+// an administrator set their password and asked them to choose their own.
 import { Alert, Button, Form, Input, Space } from 'antd'
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../app/AuthContext'
-import { FormError } from '../app/guards'
-import { AuthCard, PASSWORD_HINT, PASSWORD_RULES, errorText, matches } from '../components/AuthCard'
-import { changePassword } from '../services/api'
+import { useAuth } from '../../app/AuthContext'
+import { changePassword } from '../../services/api'
+import { AuthCard, FormError, PASSWORD_HINT, PASSWORD_RULES, errorText, matches } from './AuthCard'
 
 interface Values {
   current: string
@@ -16,9 +13,14 @@ interface Values {
   confirm: string
 }
 
-export function ChangePasswordPage() {
+export function ChangePasswordForm({
+  onDone,
+  onCancel,
+}: {
+  onDone: () => void
+  onCancel: () => void
+}) {
   const { user, refresh, logout } = useAuth()
-  const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const forced = !!user?.must_change_password
@@ -29,7 +31,7 @@ export function ChangePasswordPage() {
     try {
       await changePassword(values.current, values.password)
       await refresh()
-      navigate('/', { replace: true })
+      onDone()
     } catch (caught) {
       setError(errorText(caught, 'Could not change the password'))
     } finally {
@@ -82,7 +84,7 @@ export function ChangePasswordPage() {
             Change password
           </Button>
           {!forced ? (
-            <Button block onClick={() => navigate(-1)}>
+            <Button block onClick={onCancel}>
               Cancel
             </Button>
           ) : null}

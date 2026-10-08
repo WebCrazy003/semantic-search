@@ -1,21 +1,20 @@
-// frontend/src/pages/LoginPage.tsx
+// frontend/src/components/account/LoginForm.tsx
 import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { Button, Form, Input, Space } from 'antd'
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../app/AuthContext'
-import { FormError, nextPath } from '../app/guards'
-import { AuthCard, errorText } from '../components/AuthCard'
+import { useAuth } from '../../app/AuthContext'
+import { useDialogs } from '../../app/DialogsContext'
+import { AuthCard, DialogLink, FormError, errorText } from './AuthCard'
 
 interface Values {
   username: string
   password: string
 }
 
-export function LoginPage() {
+/** Log in. On success the dialog closes by itself and the screen behind refreshes. */
+export function LoginForm() {
   const { login, registrationOpen } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
+  const { show } = useDialogs()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -24,10 +23,8 @@ export function LoginPage() {
     setError(null)
     try {
       await login(values.username.trim(), values.password)
-      navigate(nextPath(location.search), { replace: true })
     } catch (caught) {
       setError(errorText(caught, 'Could not log in'))
-    } finally {
       setBusy(false)
     }
   }
@@ -37,10 +34,11 @@ export function LoginPage() {
       title="Log in to DocSage"
       footer={
         <Space direction="vertical" size={4}>
-          <Link to="/forgot-password">Forgot your password?</Link>
+          <DialogLink onClick={() => show('forgot')}>Forgot your password?</DialogLink>
           {registrationOpen ? (
             <span>
-              New here? <Link to="/register">Create an account</Link>
+              New here?{' '}
+              <DialogLink onClick={() => show('register')}>Create an account</DialogLink>
             </span>
           ) : null}
         </Space>

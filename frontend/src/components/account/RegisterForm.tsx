@@ -1,18 +1,19 @@
-// frontend/src/pages/RegisterPage.tsx
+// frontend/src/components/account/RegisterForm.tsx
 import { Alert, Button, Form, Input } from 'antd'
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../app/AuthContext'
-import { FormError } from '../app/guards'
+import { useAuth } from '../../app/AuthContext'
+import { useDialogs } from '../../app/DialogsContext'
 import {
   AuthCard,
+  DialogLink,
+  FormError,
   PASSWORD_HINT,
   PASSWORD_RULES,
   USERNAME_HINT,
   USERNAME_RULES,
   errorText,
   matches,
-} from '../components/AuthCard'
+} from './AuthCard'
 
 interface Values {
   username: string
@@ -20,9 +21,9 @@ interface Values {
   confirm: string
 }
 
-export function RegisterPage() {
+export function RegisterForm() {
   const { register, registrationOpen } = useAuth()
-  const navigate = useNavigate()
+  const { show } = useDialogs()
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -31,17 +32,15 @@ export function RegisterPage() {
     setError(null)
     try {
       await register(values.username.trim(), values.password)
-      navigate('/', { replace: true })
     } catch (caught) {
       setError(errorText(caught, 'Could not create the account'))
-    } finally {
       setBusy(false)
     }
   }
 
   const footer = (
     <span>
-      Already have an account? <Link to="/login">Log in</Link>
+      Already have an account? <DialogLink onClick={() => show('login')}>Log in</DialogLink>
     </span>
   )
 

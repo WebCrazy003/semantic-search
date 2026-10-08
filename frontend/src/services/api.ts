@@ -76,6 +76,17 @@ export interface IndexStatus {
   failures: IndexFailure[]
   /** Present only while a job is running. */
   device?: DeviceUsage | null
+  /** The caller's own files in this run, and queued behind it. Missing on an older backend. */
+  files?: RunFile[]
+  queued_files?: RunFile[]
+}
+
+export interface RunFile {
+  path: string
+  name: string
+  state: 'waiting' | 'indexing' | 'indexed' | 'skipped' | 'unsupported' | 'failed'
+  error?: string | null
+  document_id?: string | null
 }
 
 export interface IndexStarted {
@@ -255,6 +266,11 @@ function isAbort(caught: unknown): boolean {
     caught !== null &&
     (caught as { name?: unknown }).name === 'AbortError'
   )
+}
+
+/** What to show for a caught error: its message, or `fallback` for anything else. */
+export function errorText(caught: unknown, fallback: string): string {
+  return caught instanceof Error ? caught.message : fallback
 }
 
 /** The backend's `detail`, or a generic line when the body has none. */
@@ -563,6 +579,57 @@ export function clearIndex(): Promise<ClearResult> {
 export function documentFileUrl(documentId: string, page?: number): string {
   const base = `/api/documents/${documentId}/file`
   return page && page > 0 ? `${base}#page=${page}` : base
+}
+
+/** One passage, for a viewer opened from a link rather than from a search. */
+export interface Passage {
+  document_id: string
+  chunk_index: number
+  filename: string
+  file_type: string
+  page_start: number
+  page_end: number
+  heading: string | null
+  text: string
+}
+
+export function getPassage(documentId: string, chunkIndex: number): Promise<Passage> {
+  return call<Passage>(`/api/documents/${documentId}/passages/${chunkIndex}`)
+}
+
+/** A document's bytes for the in-app viewer, with what kind of file it is and its name. */
+export interface DocumentFile {
+  data: ArrayBuffer
+  kind: 'pdf' | 'docx' | 'other'
+  filename: string | null
+}
+
+export async function fetchDocumentFile(
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<DocumentFile> {
+  const response = await send(documentFileUrl(documentId), { signal })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw failure(body, response.status)
+  }
+  const type = response.headers.get('content-type') ?? ''
+  const kind = type.includes('pdf') ? 'pdf' : type.includes('wordprocessingml') ? 'docx' : 'other'
+  return { data: await response.arrayBuffer(), kind, filename: dispositionName(response) }
+}
+
+/** The filename from Content-Disposition, preferring the UTF-8 form CJK names use. */
+function dispositionName(response: Response): string | null {
+  const header = response.headers.get('content-disposition') ?? ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1])
+    } catch {
+      // Fall through to the plain form.
+    }
+  }
+  return /filename="?([^";]+)"?/i.exec(header)?.[1] ?? null
 }
 
 export function getFolders(): Promise<FolderSummary[]> {
@@ -901,3 +968,172 @@ export function setRegistrationOpen(open: boolean): Promise<{ registration_open:
     body: JSON.stringify({ registration_open: open }),
   })
 }
+
+// ------------------------------------------------------------ document manager
+// Folders live in the database; a tree is 'me', or for an admin 'library' or a user id
+// (spec 2026-10-08 §3.5).
+
+export type DriveFileState =
+  | 'waiting'
+  | 'indexing'
+  | 'indexed'
+  | 'unsupported'
+  | 'failed'
+  | 'duplicate'
+  | 'not_indexed'
+
+export interface DriveFolder {
+  folder_id: string
+  name: string
+  parent_id: string | null
+  file_count: number
+  folders: DriveFolder[]
+}
+
+export interface DriveFile {
+  file_id: string
+  name: string
+  folder_id: string | null
+  file_type: FileType | string
+  size: number
+  modified_at: string | null
+  state: DriveFileState
+  error: string | null
+  document_id: string | null
+  pages: number | null
+  pages_approximate: boolean
+  chunks: number | null
+  visibility: Visibility | null
+  external: boolean
+}
+
+export interface DriveListing {
+  tree: string
+  folder_id: string | null
+  breadcrumb: { folder_id: string; name: string }[]
+  folders: DriveFolder[]
+  files: DriveFile[]
+  not_indexed: number
+}
+
+export interface DriveTree {
+  tree: string
+  folders: DriveFolder[]
+  root_file_count: number
+}
+
+function treeQuery(tree: string, folderId?: string | null): string {
+  const params = new URLSearchParams({ tree })
+  if (folderId) params.set('folder_id', folderId)
+  return params.toString()
+}
+
+export function getDriveTree(tree = 'me'): Promise<DriveTree> {
+  return call<DriveTree>(`/api/drive/tree?${treeQuery(tree)}`)
+}
+
+export function listDrive(tree = 'me', folderId?: string | null): Promise<DriveListing> {
+  return call<DriveListing>(`/api/drive/list?${treeQuery(tree, folderId)}`)
+}
+
+export function createDriveFolder(
+  tree: string,
+  parentId: string | null,
+  name: string,
+): Promise<DriveFolder> {
+  return call<DriveFolder>('/api/drive/folders', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ tree, parent_id: parentId, name }),
+  })
+}
+
+export function renameDriveFolder(folderId: string, name: string): Promise<DriveFolder> {
+  return call<DriveFolder>(`/api/drive/folders/${folderId}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function deleteDriveFolder(folderId: string): Promise<void> {
+  return call<void>(`/api/drive/folders/${folderId}`, { method: 'DELETE' })
+}
+
+export function moveDriveItems(
+  tree: string,
+  items: { fileIds?: string[]; folderIds?: string[] },
+  to: string | null,
+): Promise<void> {
+  return call<void>('/api/drive/move', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      tree,
+      file_ids: items.fileIds ?? [],
+      folder_ids: items.folderIds ?? [],
+      to,
+    }),
+  })
+}
+
+export interface DriveIndexResult {
+  status: 'started' | 'queued' | 'nothing'
+  files: number
+}
+
+/** Index these files, or (no ids) every file in the tree not indexed yet. */
+export function indexDriveFiles(
+  tree: string,
+  fileIds: string[] | null,
+  force = false,
+): Promise<DriveIndexResult> {
+  return call<DriveIndexResult>('/api/drive/index', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ tree, file_ids: fileIds, force }),
+  })
+}
+
+export interface DriveUploadResult extends UploadResult {
+  files: { file_id: string; name: string }[]
+  indexing: 'started' | 'queued' | null
+}
+
+/**
+ * Upload into a folder of one's own tree, reporting progress. XMLHttpRequest rather
+ * than fetch, because fetch cannot report how much of a request body has been sent.
+ * The server indexes what it saved; nothing else needs calling.
+ */
+export function uploadToDrive(
+  files: File[],
+  folderId: string | null,
+  onProgress: (sent: number, total: number) => void,
+): Promise<DriveUploadResult> {
+  const form = new FormData()
+  for (const file of files) form.append('files', file)
+  if (folderId) form.append('folder_id', folderId)
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest()
+    request.open('POST', '/api/documents/upload')
+    request.setRequestHeader('X-DocSage', '1')
+    request.withCredentials = true
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total)
+    }
+    request.onload = () => {
+      let body: unknown = null
+      try {
+        body = JSON.parse(request.responseText)
+      } catch {
+        // Not JSON: reported below by status.
+      }
+      if (request.status === 401) authListener?.('unauthorized')
+      if (request.status >= 200 && request.status < 300) resolve(body as DriveUploadResult)
+      else reject(failure(body, request.status))
+    }
+    request.onerror = () => reject(new Error(OFFLINE))
+    request.send(form)
+  })
+}
+

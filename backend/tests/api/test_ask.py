@@ -71,8 +71,9 @@ def test_a_blank_question_is_rejected_before_streaming(indexed_client: TestClien
     assert indexed_client.post("/api/ask", json={"query": "   "}).status_code == 400
 
 
-def test_needs_a_session(anon: TestClient) -> None:
-    assert anon.post("/api/ask", json={"query": "x"}).status_code == 401
+def test_a_visitor_may_ask(anon: TestClient) -> None:
+    """Open to visitors, over public documents only (tests/api/test_visitors.py)."""
+    assert anon.post("/api/ask", json={"query": "x"}).status_code == 200
 
 
 def test_readiness_reports_whether_answers_are_available(

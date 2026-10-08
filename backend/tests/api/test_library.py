@@ -149,19 +149,22 @@ class TestUpload:
         second = client.post("/api/documents/upload", files=files)
         assert second.json()["saved"] == ["dup (2).pdf"]
 
-    def test_uploaded_files_are_picked_up_by_the_next_run(
+    def test_an_upload_is_indexed_without_asking(
         self, client: TestClient, corpus_dir: Path, container
     ) -> None:
+        """The server indexes what it was sent (2026-10-08 spec §3.3); a later run has
+        nothing left to do for it."""
         for path in container.settings.pdf_directory.glob("*.pdf"):
             path.unlink()
         payload = (corpus_dir / "manual_zh.pdf").read_bytes()
-        client.post(
+        response = client.post(
             "/api/documents/upload",
             files=[("files", ("only.pdf", payload, "application/pdf"))],
         )
-        status = _index(client)
-        assert status["indexed_documents"] == 1
+        assert response.json()["indexing"] == "started"
         assert [d["filename"] for d in client.get("/api/documents").json()] == ["only.pdf"]
+        status = _index(client)
+        assert status["indexed_documents"] == 0
 
 
 class TestRemoveOneDocument:

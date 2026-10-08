@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
-from app.auth import active_user, scope_for
+from app.auth import reader, scope_for
 from app.deps import Container, get_container
 from app.models.request_models import SearchRequest
 from app.models.response_models import SearchResponse
@@ -21,18 +21,19 @@ router = APIRouter(tags=["search"])
 @router.post("/search", response_model=SearchResponse)
 def search(
     request: SearchRequest,
-    user: User = Depends(active_user),
+    user: User | None = Depends(reader),
     container: Container = Depends(get_container),
 ) -> SearchResponse:
-    """Search what the caller may read: everything for an admin, otherwise their own
-    documents and public ones. The scope comes from the session, not the body."""
+    """Search what the caller may read: everything for an admin, public documents for a
+    visitor, otherwise their own documents and public ones. The scope comes from the
+    session, not the body."""
     return _search_as(user, request, container)
 
 
 @router.post("/ask")
 async def ask(
     request: SearchRequest,
-    user: User = Depends(active_user),
+    user: User | None = Depends(reader),
     container: Container = Depends(get_container),
 ) -> StreamingResponse:
     """A search, then an answer written from its results, as server-sent events.
@@ -51,8 +52,11 @@ async def ask(
     )
 
 
-def _search_as(user: User, request: SearchRequest, container: Container) -> SearchResponse:
-    if not user.is_admin and request.filters is not None:
+def _search_as(
+    user: User | None, request: SearchRequest, container: Container
+) -> SearchResponse:
+    is_admin = user is not None and user.is_admin
+    if not is_admin and request.filters is not None:
         # Owner and visibility filters are the admin's; for anyone else they are
         # ignored rather than rejected, so an older client keeps working.
         request = request.model_copy(
@@ -67,10 +71,10 @@ def _search_as(user: User, request: SearchRequest, container: Container) -> Sear
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    names = container.access.usernames() if user.is_admin else {}
+    names = container.access.usernames() if is_admin else {}
     for hit in response.results:
-        hit.is_mine = hit.owner_id == user.user_id
-        if user.is_admin:
+        hit.is_mine = user is not None and hit.owner_id == user.user_id
+        if is_admin:
             hit.owner_username = names.get(hit.owner_id or "") if hit.owner_id != LIBRARY else None
         else:
             # Everyone else sees "Public", never who uploaded it or where it is stored.

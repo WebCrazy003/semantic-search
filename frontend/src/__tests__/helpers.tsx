@@ -1,20 +1,24 @@
 // frontend/src/__tests__/helpers.tsx
 // Rendering helpers. The app's state lives in providers, so a test that renders a page in
-// isolation has to supply the same tree main.tsx and App's signed-in layout do.
+// isolation has to supply the same tree main.tsx and App do.
 //
 // Every test starts logged in as an administrator (vitest.setup.ts mocks the session);
 // `asUser()` and `loggedOut()` change that for one test.
 
-import { render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { ConfigProvider } from 'antd'
 import type { ReactElement, ReactNode } from 'react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation, useNavigate, type NavigateFunction } from 'react-router-dom'
 import { vi } from 'vitest'
 import App from '../App'
 import { AuthProvider } from '../app/AuthContext'
+import { DialogsProvider } from '../app/DialogsContext'
 import { LibraryProvider } from '../app/LibraryContext'
+import { SearchProvider } from '../app/SearchContext'
+import { searchPath } from '../pages/searchPath'
 import * as api from '../services/api'
 import type { User } from '../services/api'
-import { SearchProvider } from '../app/SearchContext'
 import { SettingsProvider } from '../settings/SettingsContext'
 import { ThemeProvider } from '../settings/ThemeProvider'
 import { STORAGE_KEY, type UiSettings } from '../settings/settings'
@@ -83,38 +87,102 @@ export function untilAborted(signal: AbortSignal | undefined): Promise<void> {
 export const asUser = (user: User = USER) => givenSession(user)
 export const loggedOut = (extra: Partial<api.AuthStatus> = {}) => givenSession(null, extra)
 
-function Shell({ children }: { children: ReactNode }) {
+// No antd motion: jsdom never fires the animation events that end a modal's or a
+// drawer's enter and leave, so a dialog would stay half-open or half-closed and could
+// not be asserted on. The app's own ConfigProvider (ThemeProvider) inherits this token.
+const NO_MOTION = { token: { motion: false } }
+
+function Providers({ children }: { children: ReactNode }) {
   return (
-    <SettingsProvider>
-      <ThemeProvider>
-        <AuthProvider>{children}</AuthProvider>
-      </ThemeProvider>
-    </SettingsProvider>
+    <ConfigProvider theme={NO_MOTION}>
+      <SettingsProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
+      </SettingsProvider>
+    </ConfigProvider>
   )
 }
 
-/** One page, at one route, with the real providers around it, as App mounts them. */
+// The router this render is using, captured so a test can press Back or read where the
+// app is: MemoryRouter has no address bar to look at.
+let routerNavigate: NavigateFunction | null = null
+
+function RouterProbe() {
+  const location = useLocation()
+  routerNavigate = useNavigate()
+  return (
+    <output data-testid="location" hidden>
+      {location.pathname + location.search}
+    </output>
+  )
+}
+
+/** Where the app is, as `pathname + search`, e.g. `/search?q=x`. */
+export function currentLocation(): string {
+  return screen.getByTestId('location').textContent ?? ''
+}
+
+/** The browser's Back button. */
+export async function goBack() {
+  await act(async () => {
+    await routerNavigate?.(-1)
+  })
+}
+
+/**
+ * One page or component, at one route, with the real providers around it, as App mounts
+ * them. The dialogs read the URL (?dialog=), so they sit inside the router.
+ */
 export function renderWithProviders(ui: ReactElement, route = '/') {
   return render(
-    <Shell>
-      <LibraryProvider>
-        <SearchProvider>
-          <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
-        </SearchProvider>
-      </LibraryProvider>
-    </Shell>,
+    <Providers>
+      <MemoryRouter initialEntries={[route]}>
+        <DialogsProvider>
+          <LibraryProvider>
+            <SearchProvider>
+              {ui}
+              <RouterProbe />
+            </SearchProvider>
+          </LibraryProvider>
+        </DialogsProvider>
+      </MemoryRouter>
+    </Providers>,
   )
 }
 
 /** The whole app, starting at `route`. */
 export function renderApp(route = '/') {
   return render(
-    <Shell>
+    <Providers>
       <MemoryRouter initialEntries={[route]}>
         <App />
+        <RouterProbe />
       </MemoryRouter>
-    </Shell>,
+    </Providers>,
   )
+}
+
+/** The whole app, opened straight on the results for `query`, as a bookmark would. */
+export function renderResults(query: string) {
+  return renderApp(searchPath(query))
+}
+
+/**
+ * Search the way a reader does: type into whichever search box is on screen (the big
+ * one on the home page, or the header's on the results page) and press Enter. The
+ * header box shows the current query, so it is cleared first.
+ */
+export async function searchFor(query: string) {
+  const box = await screen.findByRole('textbox', { name: /search documents/i })
+  await userEvent.clear(box)
+  await userEvent.type(box, `${query}{Enter}`)
+}
+
+/** The modal that is open, by its heading (antd modals without a title have no name). */
+export async function findDialog(heading: string | RegExp): Promise<HTMLElement> {
+  const title = await screen.findByRole('heading', { name: heading })
+  return title.closest('.ant-modal') as HTMLElement
 }
 
 /**
@@ -123,16 +191,45 @@ export function renderApp(route = '/') {
  * listbox of its own.
  */
 export async function chooseOption(label: string | RegExp, option: string | RegExp) {
-  const { screen } = await import('@testing-library/react')
-  const userEvent = (await import('@testing-library/user-event')).default
   await userEvent.click(screen.getByLabelText(label))
   await userEvent.click(await screen.findByTitle(option))
 }
 
-/** The two navigation buttons in the header, not the ones a page happens to render. */
-export async function clickNav(name: string | RegExp) {
-  const { screen, within } = await import('@testing-library/react')
-  const userEvent = (await import('@testing-library/user-event')).default
-  const nav = screen.getByRole('navigation', { name: 'Main' })
-  await userEvent.click(within(nav).getByRole('button', { name }))
+/** What the document manager lists: by default an empty tree, as on a fresh account. */
+export function givenDrive(files: api.DriveFile[] = [], folders: api.DriveFolder[] = []) {
+  vi.spyOn(api, 'listDrive').mockImplementation(async (tree = 'me', folderId = null) => ({
+    tree,
+    folder_id: folderId ?? null,
+    breadcrumb: [],
+    folders: folderId ? [] : folders,
+    files: files.filter((file) => (file.folder_id ?? null) === (folderId ?? null)),
+    not_indexed: files.filter((file) => file.state === 'not_indexed').length,
+  }))
+  vi.spyOn(api, 'getDriveTree').mockImplementation(async (tree = 'me') => ({
+    tree,
+    folders,
+    root_file_count: files.filter((file) => !file.folder_id).length,
+  }))
 }
+
+/** One file as the document manager lists it. */
+export function makeDriveFile(overrides: Partial<api.DriveFile> = {}): api.DriveFile {
+  return {
+    file_id: 'file-1',
+    name: 'manual_zh.pdf',
+    folder_id: null,
+    file_type: 'pdf',
+    size: 4096,
+    modified_at: '2026-10-01T00:00:00Z',
+    state: 'indexed',
+    error: null,
+    document_id: 'a'.repeat(64),
+    pages: 12,
+    pages_approximate: false,
+    chunks: 30,
+    visibility: 'private',
+    external: false,
+    ...overrides,
+  }
+}
+

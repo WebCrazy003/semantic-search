@@ -2,9 +2,10 @@
 // Who is logged in. Loaded once at start from /api/auth/status, which answers without a
 // session, and updated by login, logout and the API client noticing a 401.
 //
-// It sits above the router and below nothing that needs a session: the library poller
-// and the search state mount inside the signed-in layout (App.tsx), so nothing asks for
-// documents before there is someone to ask for, and logging out throws both away.
+// It sits above the router. Search is open to visitors, so the search state mounts for
+// everyone and runs its query again when the user changes; the library poller mounts
+// only on the pages that need a login (App.tsx), so nothing asks for the document list
+// before there is someone to ask for.
 
 import {
   createContext,

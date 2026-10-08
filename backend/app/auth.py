@@ -49,8 +49,11 @@ def user_view(user: User) -> UserView:
     )
 
 
-def scope_for(user: User, mode: str = "all") -> AccessScope:
-    """Admins read everything; anyone else their own documents and public ones."""
+def scope_for(user: User | None, mode: str = "all") -> AccessScope:
+    """Admins read everything; a visitor only public documents; anyone else their own
+    documents and public ones."""
+    if user is None:
+        return AccessScope.visitor()
     if user.is_admin:
         return AccessScope(user_id=None)
     return AccessScope(user_id=user.user_id, mode=mode)  # type: ignore[arg-type]
@@ -99,6 +102,15 @@ def optional_user(
 def current_user(user: User | None = Depends(optional_user)) -> User:
     if user is None:
         raise HTTPException(status_code=401, detail="Log in to continue")
+    return user
+
+
+def reader(user: User | None = Depends(optional_user)) -> User | None:
+    """The caller on a route open to visitors: None for someone not logged in, who reads
+    public documents only. Someone who must change their password counts as a visitor
+    until they do, so they read no more than before they logged in."""
+    if user is None or user.must_change_password:
+        return None
     return user
 
 

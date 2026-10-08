@@ -1,9 +1,10 @@
-// frontend/src/components/AuthCard.tsx
-// The frame every account page shares: the mark, a title, one card.
+// frontend/src/components/account/AuthCard.tsx
+// The frame every account dialog shares: the mark, a title, the form, a footer. The
+// dialog supplies the card, so this is only what goes inside it.
 
-import { Card, Typography } from 'antd'
+import { Alert, Typography } from 'antd'
 import type { ReactNode } from 'react'
-import { DocSageMark } from './DocSageMark'
+import { DocSageMark } from '../DocSageMark'
 
 export const USERNAME_HINT = '3–32 English letters, digits, dots, dashes or underscores'
 export const PASSWORD_HINT = 'At least 8 characters'
@@ -45,24 +46,34 @@ export function AuthCard({
   footer?: ReactNode
 }) {
   return (
-    <div className="auth-page">
-      <Card className="auth-card">
-        <div className="auth-card-head">
-          <DocSageMark size={40} />
-          <Typography.Title level={3}>{title}</Typography.Title>
-          {subtitle ? (
-            <Typography.Paragraph type="secondary" className="auth-subtitle">
-              {subtitle}
-            </Typography.Paragraph>
-          ) : null}
-        </div>
-        {children}
-        {footer ? <div className="auth-footer">{footer}</div> : null}
-      </Card>
+    <div className="auth-card">
+      <div className="auth-card-head">
+        <DocSageMark size={40} />
+        <Typography.Title level={3}>{title}</Typography.Title>
+        {subtitle ? (
+          <Typography.Paragraph type="secondary" className="auth-subtitle">
+            {subtitle}
+          </Typography.Paragraph>
+        ) : null}
+      </div>
+      {children}
+      {footer ? <div className="auth-footer">{footer}</div> : null}
     </div>
   )
 }
 
-export function errorText(caught: unknown, fallback: string): string {
-  return caught instanceof Error ? caught.message : fallback
+/** A form error in the style every account dialog uses. */
+export function FormError({ message }: { message: string | null }) {
+  return message ? <Alert type="error" showIcon message={message} className="auth-alert" /> : null
 }
+
+/** A link that switches the account dialog to another step. */
+export function DialogLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className="dialog-link" onClick={onClick}>
+      {children}
+    </button>
+  )
+}
+
+export { errorText } from '../../services/api'

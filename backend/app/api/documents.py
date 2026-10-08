@@ -6,29 +6,44 @@ import re
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 
 from app.api.guards import apply_visibility, owned_or_404, readable_or_404, remove_document
-from app.auth import active_user, admin_user
+from app.auth import active_user, admin_user, reader
 from app.deps import Container, get_container
 from app.logging_config import get_logger
 from app.models.request_models import VisibilityRequest
 from app.models.response_models import (
     DocumentSummary,
+    PassageResponse,
     RejectedUpload,
     RemovedDocumentResponse,
+    UploadedFile,
     UploadResponse,
     VisibilityResponse,
 )
 from app.services.access_store import User
 from app.services.docx_service import DOCX_MEDIA_TYPE, OLE_MAGIC, ZIP_MAGIC
+from app.services.drive_store import DriveError, DriveFile
 from app.services.extractors import file_type_for
 from app.services.manifest_service import DocumentRecord
 from app.services.ownership import LIBRARY, user_folder
 
 logger = get_logger("api.documents")
 router = APIRouter(tags=["documents"])
+# Reading one document is open to visitors, who may read public documents. main.py
+# mounts this router without the signed-in guard, so every route here declares its own.
+reader_router = APIRouter(tags=["documents"])
 
 # Upload limits. A file larger than this is far more likely to be a mistake than a
 # manual, and the whole file is read into memory before it is written.
@@ -97,58 +112,85 @@ def _summary(record: DocumentRecord, user: User, names: dict[str, str]) -> Docum
 
 @router.post("/documents/upload", response_model=UploadResponse, status_code=201)
 async def upload_documents(
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
+    folder_id: str | None = Form(default=None),
     user: User = Depends(active_user),
     container: Container = Depends(get_container),
 ) -> UploadResponse:
-    """Copy PDF and Word files into the uploader's own folder. Indexing is a separate step.
+    """Copy PDF and Word files into the uploader's own folder, and index them.
 
     Nothing is parsed here: a file that turns out to be scanned or damaged is reported
-    by the indexing run, which is the one place that classifies documents. The folder
-    comes from the session, never from the request, and decides who owns the files.
+    by the indexing run, which is the one place that classifies documents. The folder on
+    disk comes from the session, never from the request, and decides who owns the files.
+
+    `folder_id` is the document manager's folder to list them in. Indexing starts here,
+    not in the browser, so closing the tab right after an upload loses nothing; it waits
+    its turn when another run is going (2026-10-08 spec §3.3).
     """
+    try:
+        container.drive.store.folder_in(user.user_id, folder_id or None)
+    except DriveError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     directory = user_folder(container.settings.pdf_directory, user.user_id)
     directory.mkdir(parents=True, exist_ok=True)
 
     saved: list[str] = []
     rejected: list[RejectedUpload] = []
+    added: list[DriveFile] = []
 
     for upload in files:
+        # Rejections report the name as sent, so the browser can match its own row.
+        sent = upload.filename or "?"
         name = _safe_name(upload.filename or "")
         if not name:
             rejected.append(RejectedUpload(filename=upload.filename or "?", reason="no filename"))
             continue
         suffix = Path(name).suffix.lower()
         if suffix not in container.extractors.suffixes:
-            rejected.append(RejectedUpload(filename=name, reason=_NOT_SUPPORTED))
+            rejected.append(RejectedUpload(filename=sent, reason=_NOT_SUPPORTED))
             continue
 
         payload = await upload.read()
         if len(payload) > _MAX_UPLOAD_BYTES:
             rejected.append(
                 RejectedUpload(
-                    filename=name,
+                    filename=sent,
                     reason=f"larger than {_MAX_UPLOAD_BYTES // 1024 // 1024} MB",
                 )
             )
             continue
         problem = _header_problem(suffix, payload)
         if problem:
-            rejected.append(RejectedUpload(filename=name, reason=problem))
+            rejected.append(RejectedUpload(filename=sent, reason=problem))
             continue
 
         target = _free_path(directory / name)
         target.write_bytes(payload)
         saved.append(target.name)
+        added.append(container.drive.store.add(user.user_id, str(target), folder_id or None))
         logger.info("stored upload %s (%d bytes)", target.name, len(payload))
 
-    return UploadResponse(saved=saved, rejected=rejected, directory=str(directory))
+    indexing = None
+    if added:
+        indexing = container.drive.request_index(
+            user.user_id, [file.path for file in added], user.user_id
+        )
+        if indexing == "started":
+            background_tasks.add_task(container.indexing.drain)
+    return UploadResponse(
+        saved=saved,
+        rejected=rejected,
+        directory=str(directory),
+        files=[UploadedFile(file_id=file.file_id, name=file.name) for file in added],
+        indexing=indexing,
+    )
 
 
-@router.get("/documents/{document_id}/file")
+@reader_router.get("/documents/{document_id}/file")
 def get_document_file(
     document_id: str,
-    user: User = Depends(active_user),
+    user: User | None = Depends(reader),
     container: Container = Depends(get_container),
 ) -> FileResponse:
     """Serve one indexed file: a PDF opens in the browser at the matching page, and a
@@ -181,6 +223,32 @@ def get_document_file(
     raise HTTPException(
         status_code=404,
         detail=f"{record.filename} is no longer in any folder in the library",
+    )
+
+
+@reader_router.get(
+    "/documents/{document_id}/passages/{chunk_index}", response_model=PassageResponse
+)
+def get_passage(
+    document_id: str,
+    chunk_index: int,
+    user: User | None = Depends(reader),
+    container: Container = Depends(get_container),
+) -> PassageResponse:
+    """One passage of a document the caller may read, for a viewer opened from a link."""
+    record = readable_or_404(container, user, document_id)
+    payload = container.qdrant.get_chunk(document_id, chunk_index)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="No such passage")
+    return PassageResponse(
+        document_id=document_id,
+        chunk_index=chunk_index,
+        filename=record.filename,
+        file_type=file_type_for(record.filename),
+        page_start=int(payload.get("page_start", 0)),
+        page_end=int(payload.get("page_end", 0)),
+        heading=payload.get("heading"),
+        text=str(payload.get("text", "")),
     )
 
 

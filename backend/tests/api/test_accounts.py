@@ -213,7 +213,8 @@ class TestMustChangePassword:
         created = client.post("/api/admin/users", json={"username": "newbie"}).json()
         login(anon, "newbie", created["temporary_password"])
 
-        blocked = anon.post("/api/search", json={"query": "anything"})
+        # Search is open to visitors, so the list of one's own documents is the check.
+        blocked = anon.get("/api/documents")
         assert blocked.status_code == 403
         assert blocked.json()["detail"] == "password_change_required"
         assert anon.get("/api/auth/me").json()["user"]["must_change_password"] is True

@@ -23,8 +23,11 @@ logger = get_logger("api.guards")
 NOT_FOUND = "No such document"
 
 
-def readable_or_404(container: Container, user: User, document_id: str) -> DocumentRecord:
-    """Admins read everything; anyone else their own documents and public ones."""
+def readable_or_404(
+    container: Container, user: User | None, document_id: str
+) -> DocumentRecord:
+    """Admins read everything; a visitor (None) public documents; anyone else their own
+    documents and public ones."""
     record = container.manifest.get(document_id)
     if record is None or not can_read(user, record):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -39,8 +42,10 @@ def owned_or_404(container: Container, user: User, document_id: str) -> Document
     return record
 
 
-def can_read(user: User, record: DocumentRecord) -> bool:
-    return user.is_admin or record.owner_id == user.user_id or record.visibility == PUBLIC
+def can_read(user: User | None, record: DocumentRecord) -> bool:
+    if record.visibility == PUBLIC:
+        return True
+    return user is not None and (user.is_admin or record.owner_id == user.user_id)
 
 
 def remove_document(container: Container, record: DocumentRecord) -> tuple[int, bool]:

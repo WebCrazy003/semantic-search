@@ -85,6 +85,17 @@ class DeviceUsageView(BaseModel):
     gpu_percent: float | None = None
 
 
+class RunFileView(BaseModel):
+    """One file of a run, or of a run waiting behind it, for the upload panel."""
+
+    path: str
+    name: str
+    # waiting, indexing, indexed, skipped, unsupported, failed
+    state: str
+    error: str | None = None
+    document_id: str | None = None
+
+
 class IndexStatusResponse(BaseModel):
     status: Literal["idle", "running", "completed", "failed"]
     job_id: str | None = None
@@ -108,6 +119,10 @@ class IndexStatusResponse(BaseModel):
     failures: list[IndexFailure] = []
     # Present while a job runs, so the UI can show what the GPU or CPU is doing.
     device: DeviceUsageView | None = None
+    # The caller's own files: those of this run, and those queued behind it. Empty for
+    # anyone else's run, like current_file.
+    files: list[RunFileView] = []
+    queued_files: list[RunFileView] = []
 
 
 class DocumentSummary(BaseModel):
@@ -163,10 +178,19 @@ class RejectedUpload(BaseModel):
     reason: str
 
 
+class UploadedFile(BaseModel):
+    file_id: str
+    name: str
+
+
 class UploadResponse(BaseModel):
     saved: list[str] = []
     rejected: list[RejectedUpload] = []
     directory: str
+    # The document manager's rows for the saved files, and whether indexing them
+    # started at once or waits behind another run.
+    files: list[UploadedFile] = []
+    indexing: Literal["started", "queued"] | None = None
 
 
 class FolderSummary(BaseModel):
@@ -413,3 +437,77 @@ class BulkVisibilityResponse(BaseModel):
 
 class AuthSettingsResponse(BaseModel):
     registration_open: bool
+
+
+class PassageResponse(BaseModel):
+    """One passage, for the document viewer opened from a link rather than a search."""
+
+    document_id: str
+    chunk_index: int
+    filename: str
+    file_type: str
+    page_start: int
+    page_end: int
+    heading: str | None = None
+    text: str
+
+
+# ------------------------------------------------------------ document manager
+
+
+class DriveFolderView(BaseModel):
+    folder_id: str
+    name: str
+    parent_id: str | None = None
+    # Files directly in this folder.
+    file_count: int = 0
+    folders: list[DriveFolderView] = []
+
+
+class DriveFileView(BaseModel):
+    file_id: str
+    name: str
+    folder_id: str | None = None
+    file_type: str
+    size: int = 0
+    modified_at: datetime | None = None
+    # waiting, indexing, indexed, unsupported, failed, duplicate, not_indexed
+    state: str
+    error: str | None = None
+    document_id: str | None = None
+    pages: int | None = None
+    pages_approximate: bool = False
+    chunks: int | None = None
+    visibility: str | None = None
+    # Library files that live in a folder registered from elsewhere on the machine:
+    # DocSage never deletes those, only unindexes them.
+    external: bool = False
+
+
+class DriveCrumb(BaseModel):
+    folder_id: str
+    name: str
+
+
+class DriveListing(BaseModel):
+    tree: str
+    folder_id: str | None = None
+    # From the top of the tree down to this folder; empty at the top.
+    breadcrumb: list[DriveCrumb] = []
+    folders: list[DriveFolderView] = []
+    files: list[DriveFileView] = []
+    # Across the whole tree, for the rail's "Index now (n)".
+    not_indexed: int = 0
+
+
+class DriveTree(BaseModel):
+    tree: str
+    folders: list[DriveFolderView] = []
+    # Files at the top of the tree, outside any folder.
+    root_file_count: int = 0
+
+
+class DriveIndexResponse(BaseModel):
+    status: Literal["started", "queued", "nothing"]
+    files: int = 0
+

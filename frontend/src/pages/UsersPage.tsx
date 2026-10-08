@@ -27,7 +27,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../app/AuthContext'
-import { PASSWORD_HINT, PASSWORD_RULES, USERNAME_HINT, USERNAME_RULES } from '../components/AuthCard'
+import { PASSWORD_HINT, PASSWORD_RULES, USERNAME_HINT, USERNAME_RULES } from '../components/account/AuthCard'
 import * as api from '../services/api'
 import type { ResetRequestView, Role, UserAdminView } from '../services/api'
 

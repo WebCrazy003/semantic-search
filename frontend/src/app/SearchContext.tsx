@@ -3,6 +3,10 @@
 // result set away (spec R1.4). The old tab shell kept every tab mounted to get this;
 // routes cannot, so the state moves up instead.
 //
+// It serves visitors too, who search public documents only (spec 2026-10-08 §1.5).
+// Logging in or out runs the current query again, so the results on screen always
+// match who is looking.
+//
 // The answer streamed with a search is owned here too (run() drives it), but published
 // through AnswerContext, so a streamed word does not re-render everything that reads
 // this context.
@@ -29,6 +33,7 @@ import {
   type Visibility,
 } from '../services/api'
 import { useSettings } from '../settings/SettingsContext'
+import { useAuth } from './AuthContext'
 import { AnswerProvider } from './AnswerContext'
 import { IDLE, answerReducer } from './answerState'
 
@@ -218,6 +223,22 @@ export function SearchProvider({ children }: { children: ReactNode }) {
     },
     [topK, language, scope, owner, visibility, shouldAsk, markUnavailable],
   )
+
+  // Who is searching. Someone who must change their password reads as a visitor, as
+  // the backend treats them.
+  const { user } = useAuth()
+  const who = user && !user.must_change_password ? user.user_id : null
+  const lastWho = useRef(who)
+  const latest = useRef({ run, query })
+  useEffect(() => {
+    latest.current = { run, query }
+  })
+  useEffect(() => {
+    if (lastWho.current === who) return
+    lastWho.current = who
+    const { run: runNow, query: current } = latest.current
+    if (current) void runNow(current)
+  }, [who])
 
   const stopAnswer = useCallback(() => {
     controllerRef.current?.abort()
