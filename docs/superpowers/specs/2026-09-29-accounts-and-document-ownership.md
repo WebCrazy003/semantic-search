@@ -4,6 +4,11 @@
 **Branch:** `main` (following the house convention of the previous specs)
 **Status:** Implemented 2026-09-30 (all four slices)
 
+> **Superseded in part (2026-10-08).** Public documents can now be searched, asked about
+> and opened without logging in, and the login, register, setup and change-password
+> pages became dialogs. See
+> [the search, viewer and document manager spec](2026-10-08-search-home-viewer-and-drive.md) §1.
+
 Four things, delivered as four slices:
 
 1. **Accounts and sessions** — setup, register, log in, log out, change a password, and

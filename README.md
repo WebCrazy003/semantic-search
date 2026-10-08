@@ -42,24 +42,33 @@ design and the measurements behind it.
 
 ## Accounts and ownership
 
-Everyone logs in. The first start asks for an administrator account, which can only be
-created from the machine DocSage runs on. After that, people sign up with a username and
-password (an admin can turn sign-up off) and see only their own documents plus the
-ones an administrator has made public. Admins see everything.
+Anyone who can reach DocSage can search, ask about and open the documents an
+administrator has made **public**, without logging in. Logging in adds a person's own
+documents. The first start asks for an administrator account, which can only be created
+from the machine DocSage runs on. After that, people sign up with a username and
+password (an admin can turn sign-up off) and see their own documents plus the public
+ones. Admins see everything. Logging in, sign-up, password changes and settings are
+dialogs over the search page; there is no login page.
 
 - **Ownership comes from where a file lives.** Uploads go to
   `documents/users/<user_id>/`; everything else in `documents/` and in registered
   folders is the *library*, visible to admins until they publish it. Clearing the index
   or rebuilding the manifest therefore never changes who owns what.
+- **Folders are in the database, not on disk.** The document manager's folders, and which
+  folder each file is in, live in `data/access.db`; the files themselves stay flat in the
+  owner's folder. Moving a file is one row: instant, never re-indexed, and only within
+  one owner's documents. Losing `access.db` puts every file back at the top level, which
+  is one more reason to back it up.
 - **Forgotten passwords** are reset by username with an admin's approval, or by an admin
   directly. There is no email.
 - **Locked out?** `uv run --directory backend python ../scripts/reset_admin.py <username>`
   prints a temporary password and makes that account an active admin.
 - **Upgrading** an install from before accounts: everything already indexed becomes
-  library, private to admins, with no re-embedding. Publish it from the Documents page.
+  library, private to admins, with no re-embedding. Publish it from the document manager.
 
-See [the spec](docs/superpowers/specs/2026-09-29-accounts-and-document-ownership.md) for
-the design.
+See [the accounts spec](docs/superpowers/specs/2026-09-29-accounts-and-document-ownership.md)
+and [the search, viewer and document manager spec](docs/superpowers/specs/2026-10-08-search-home-viewer-and-drive.md)
+for the design.
 
 ## Setup
 
@@ -92,11 +101,12 @@ page next checks, within half a minute. Without it, with `LLM_URL` empty, or whe
 runs on the CPU (see `LLM_REQUIRE_GPU` in `.env.example`), the search page works exactly
 as before and shows no answer box.
 
-Then open http://127.0.0.1:5173, create the administrator account, and import PDF or
-Word files with **Add documents** on the Documents tab. Importing starts indexing by
-itself. When an admin imports, the run covers the whole `documents/` folder, so files put
-there by hand are indexed as the library at the same time; a regular user's import
-indexes only their own uploads.
+Then open http://127.0.0.1:5173, create the administrator account, and open **Manage
+documents** from the account menu. Uploaded PDF and Word files are indexed by the server
+as soon as they arrive, so closing the tab loses nothing; files uploaded but never
+indexed (the server stopped mid-queue) are queued again at startup, and **Index now**
+indexes any that remain. Files put into `documents/` by hand are the library: an admin
+indexes them with **Index now** in the Library view.
 
 ## Windows: building an offline release
 
@@ -214,8 +224,10 @@ display it. Legacy `.doc` is not supported; save it as `.docx` in Word. Set
 
 ## API
 
-Every route but `/api/health` and the account routes needs a session cookie, and every
-request that changes something needs the header `X-DocSage: 1`.
+Every route but `/api/health`, the account routes and the reading routes below needs a
+session cookie, and every request that changes something needs the header `X-DocSage: 1`.
+Search, ask, readiness and reading one document answer without a session too, over
+public documents only.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -227,6 +239,13 @@ request that changes something needs the header `X-DocSage: 1`.
 | POST | `/api/index` | Start an indexing run (a user's covers only their uploads) |
 | GET | `/api/index/status` | Progress and failures of the current or last run |
 | GET | `/api/documents` | Documents the caller may read, with page and passage counts |
+| GET | `/api/documents/{id}/file` | The file itself, for the viewer and downloads |
+| GET | `/api/documents/{id}/passages/{n}` | One passage, for a viewer opened from a link |
+| POST | `/api/documents/upload` | Upload into a folder (`folder_id`); indexing starts or queues by itself |
+| GET | `/api/drive/tree`, `/api/drive/list` | The document manager's folders and one folder's files with their indexing state |
+| POST/PATCH/DELETE | `/api/drive/folders` | Create, rename, delete folders |
+| POST | `/api/drive/move` | Move files and folders within one owner's tree (rows only) |
+| POST | `/api/drive/index` | Index given files, or every file not indexed yet; never sweeps |
 | PUT | `/api/documents/{id}/visibility` | Admin: make a document public or private |
 | * | `/api/admin/...` | Admin: users, reset requests, bulk visibility, sign-up, inspectors |
 
@@ -296,8 +315,10 @@ development setup only the Vite dev server listens on the network; the backend a
 Qdrant stay on `127.0.0.1`, and API calls from the other device are proxied through
 Vite. On Windows the single process binds `0.0.0.0` directly.
 
-Everyone on the network has to log in, and sees only their own documents and public
-ones. The connection is plain HTTP, though, so passwords and documents cross the
+**Public documents can be searched by anyone on the network without logging in.** That
+is what "public" means; keep a document private if that is not what you want. Everything
+else needs a login, and each person sees only their own documents and public ones. The
+connection is plain HTTP, though, so passwords and documents cross the
 network unencrypted: use this on a network you trust. macOS and Windows may each ask
 once whether to allow incoming connections; that prompt is this server.
 
@@ -343,7 +364,7 @@ than failing the run.
 | Windows: anything else | `check.bat` in the release folder |
 | Windows: "already running" | `stop.bat`, then `run.bat` |
 | Embedded store errors about a lock | Two processes opened `qdrant_storage/`; stop the app first |
-| No answer box on the search page | `LLM_URL` is empty, `llama-server` is not running, search runs on the CPU, or answers are switched off (account menu → Appearance; admins also Settings → Search) |
+| No answer box on the search page | `LLM_URL` is empty, `llama-server` is not running, search runs on the CPU, or answers are switched off (Settings → Search) |
 | Log: "answers are off: search runs on the CPU" | No usable GPU, `EMBEDDING_DEVICE=cpu`, or the GPU failed at load (the reason is in the log). An answer on a CPU takes about a minute; `LLM_REQUIRE_GPU=false` turns answers on anyway |
 | Log: "no reranker at ..." | `scripts/download_model.py reranker`; until then answers use the search order |
 | An answer is in the wrong language | Rare; it is checked and restarted once. Try `run_answer_eval.py` against the model you are using |

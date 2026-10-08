@@ -24,42 +24,85 @@ Someone with a folder of technical manuals, contracts, or reports in Chinese, Ko
 
 | You want to | You do this |
 |---|---|
-| Make documents searchable | On the **Documents** tab, press **Add documents** and import PDF or Word (.docx) files |
-| Find a passage | Type a question or phrase, press **Search** |
-| Get a written answer | Ask a question in English, Chinese or Korean, press **Search**. The answer appears above the results |
+| Make documents searchable | Account menu → **Manage documents**, then **New → Upload files**, or drop PDF or Word (.docx) files onto the page |
+| Find a passage | Type a question or phrase and press Enter |
+| See it in the document | Click the result: the PDF or Word file opens beside the results with the passage highlighted |
+| Get a written answer | Ask a question in English, Chinese or Korean and press Enter. The answer appears above the results |
 | Check where an answer came from | Click a numbered marker such as **1** in the answer: the passage it came from opens |
-| Turn written answers off | Account menu → **Appearance** → **Answer questions with AI** |
-| See what is searchable | Open the **Documents** tab |
+| Turn written answers off | Settings (top right) → **Search** → **Answer questions with AI** |
+| See what is searchable | Account menu → **Manage documents** |
+| Put documents in folders | On the documents page: **New → New folder**, then drag files onto it |
 | Search across languages | Just search. Chinese, Korean, and English all work against all documents |
 | Narrow to one language | Use the language filter |
 | Search only your own documents, or only shared ones | Use the **Show** control beside the search box |
-| Change the look | Account menu (your name, top right) → **Appearance** |
+| Change the look | Settings (top right) → **Appearance** |
 | Change your password | Account menu → **Change password** |
 
-## 4. The two screens
+## 4. The screens
 
-### Search
+### Home
 
-A search box, a search button, and a control for how many results to show.
+Like a web search engine's: the DocSage name, one search box, and at the top right a
+**settings** button and either **Log in** or your account's round initial. Type a question
+or a few words and press Enter.
 
-After a search the results appear straight away: the number of results, how long the search took, then the results themselves. Where written answers are available, an **Answer** box sits above the results and fills in while you read them. On a laptop it usually takes a few seconds to start writing; **Stop** ends it early, and the results stay either way. See §5a.
+### Results
+
+The box moves to the top, with the results under it: how many, how long the search took,
+then the results. Where written answers are available, an **Answer** box sits above them
+and fills in while you read. It usually takes a few seconds to start; **Stop** ends it
+early, and the results stay either way. See §5a.
+
+Click a result and the **document itself** opens in a panel on the right, at the passage,
+with the passage highlighted and the words of your search marked more lightly. PDFs and
+Word files both open there. **Open in a new tab** shows the same document full size,
+which suits a long Word file; **Download** saves it.
 
 ### Documents
 
-Two lists: **My documents**, the files you added, and **Public documents**, the ones an administrator has shared with everyone. Each shows the filename, page count, number of searchable passages, detected language, and status. You can remove your own documents; public ones you can open and search, but not remove.
+**Manage documents**, in your account menu, opens your documents in a tab of their own,
+laid out like Google Drive:
 
-**Add documents** opens **Import & index files**: drop PDF or Word files in and they are copied into your own folder and indexed straight away, with no second button to press. While the run is going you see its progress and how hard the GPU or CPU is working; when it finishes you see how many documents were newly indexed, skipped, or could not be read. Only one run happens at a time for everyone; if someone else's is going, your files are saved and indexed as soon as it ends.
+- **Folders.** **New → New folder** makes one. Drag files or folders onto a folder (in the
+  list, the left-hand tree or the path at the top) to move them, or use **Move to…**.
+  Moving is instant and never indexes anything again. Folders are DocSage's own: they do
+  not appear on the computer's disk.
+- **Adding files.** **New → Upload files**, or drop PDF and Word files onto the page. They
+  go into the folder you have open and are indexed straight away; a panel at the bottom
+  right shows each one uploading, waiting, indexing and done. You can close the panel, or
+  the tab: indexing carries on. Only one run happens at a time for everyone, so your files
+  may wait a moment for someone else's.
+- **Not indexed?** A file that was uploaded but never indexed (the computer was shut
+  down at the wrong moment, say) shows **Not indexed**. **Index now** in the left column
+  indexes all of them; **Index** on a file indexes just that one, and **Retry** tries a
+  failed one again.
+- **Public** lists the documents an administrator has shared with everyone. You can open
+  and download them, not move or delete them.
+- Right-click anything for Open, Download, Move to…, Index and Delete.
+- At the bottom of the left column: how many documents and passages you have, and how
+  many need attention (could not be read, or not indexed yet).
 
-Administrators see one list of every document, with its owner, and a switch on each to make it public or private.
+Administrators also see **Library** (the documents folder and any folders registered from
+elsewhere on the computer) and each user's documents, and can make documents public.
+
+### Settings
+
+The settings button opens a window rather than a page: **Appearance** and **Search** for
+everyone, **System** once you are logged in, and for administrators **Developer** and
+**Administration**, which links to the user and admin pages and holds **Clear the index**.
+Settings are kept in this browser only.
 
 ## 4a. Accounts
 
-Everyone logs in. There is no email and no phone number: an account is a username and a password.
+Anyone can search the documents an administrator has made **public** without logging in.
+Logging in (the **Log in** button at the top right) adds your own documents. There is no
+email and no phone number: an account is a username and a password. Logging in, signing
+up and resetting a password all happen in a small window over the screen you are on.
 
 - **Creating an account.** Choose a username (3 to 32 English letters, digits, dots, dashes or underscores) and a password of at least 8 characters. An administrator can turn sign-up off, and can always create an account for you.
 - **Your documents are yours.** Nobody else can see or search what you add, except administrators. An administrator can make any document **public**, and then everyone can find it.
 - **The first account.** A new installation asks for an administrator account first. This has to be done on the computer DocSage is installed on.
-- **Forgot your password?** On the login page, choose **Forgot your password?** and give your username. An administrator is asked to approve it. Once they do, the same page, in the same browser, lets you choose a new password. The request expires after 24 hours.
+- **Forgot your password?** In the login window, choose **Forgot your password?** and give your username. An administrator is asked to approve it. Once they do, the same window, in the same browser, lets you choose a new password. The request expires after 24 hours.
 - **Or ask an administrator directly.** They can reset your password and give you a new one in person. You may be asked to choose your own the next time you log in.
 
 ### What administrators can do
@@ -67,7 +110,8 @@ Everyone logs in. There is no email and no phone number: an account is a usernam
 - See, search, open and remove every document, and make any of them public or private
 - Approve or deny password reset requests. Approve only a request you were expecting: whoever made it gets to choose the new password
 - Create users, reset their passwords, make them administrators, disable them, or delete them with everything they own
-- Open **Settings** and the **Admin** pages, which other users do not see
+- Open the **Developer** and **Administration** settings and the **Admin** pages, which other users do not see
+- Clear the whole index from **Settings → Administration**
 - Turn sign-up on or off
 
 ## 5. What a search result shows
@@ -76,11 +120,12 @@ Each result is one passage from one document, with:
 
 - The **filename** it came from
 - The **page number**, or a page range if the passage spans two pages
-- A **relevance score** between 0 and 1, where higher is closer in meaning
+- How close a match it is: strong, good or weak
 - The **section heading** it sits under, when the document has one
 - The **passage text** itself
 
-Results are ordered by relevance, closest first.
+Results are ordered by relevance, closest first. Clicking one opens the document at that
+passage (§4).
 
 ## 5a. What a written answer shows
 
@@ -113,11 +158,13 @@ An answer only ever draws on documents you are allowed to see: your own and the 
 - Old Word files (.doc); save them as .docx first
 - Damaged files
 
-Unreadable files never stop a scan. They appear on the Documents tab with their status, damaged ones with the error that caused it, and everything else still gets indexed.
+Unreadable files never stop a scan. They appear on the documents page with their status, damaged ones with the error that caused it, and everything else still gets indexed.
 
 ## 7. Keeping documents up to date
 
-Every import starts an indexing run, and the run works out what to do on its own. A regular user's run covers their own uploads; an administrator's covers the whole documents folder, including files put there by hand:
+Every upload is indexed by itself. **Index now** on the documents page indexes anything
+uploaded but not indexed. An administrator's run over the library covers the whole
+documents folder, including files put there by hand, and works out what to do on its own:
 
 - A **new** file is indexed
 - An **unchanged** file is skipped, so repeat scans are fast
@@ -143,7 +190,7 @@ The only time the internet is needed is during first installation, to download t
 
 1. Install once, with the internet on. This downloads the language model, about 2.5 GB.
 2. Start the tool and create the administrator account when it asks.
-3. Open the Documents tab, press **Add documents**, and import your PDF and Word files. Files put in the `documents` folder by hand are indexed too, as the library, which only administrators see until they make documents public.
+3. Open **Manage documents** from your account menu and upload your PDF and Word files. Files put in the `documents` folder by hand are indexed too, as the library, which only administrators see until they make documents public.
 
 Indexing ten documents takes a few minutes the first time. After that you can disconnect from the internet entirely.
 
@@ -184,14 +231,17 @@ These are recognised gaps, not oversights. Each is a candidate for a later relea
 | What you see | What it means |
 |---|---|
 | "Cannot reach the backend" | The search service is not running. Start it. |
-| Sent back to the login page | Your session ended: you were logged out elsewhere, or an administrator changed your account. Log in again. |
+| You are suddenly logged out | Your session ended: you were logged out elsewhere, or an administrator changed your account. Log in again. |
 | "Too many attempts" | Several password reset requests from this computer within an hour. Wait and try again. |
 | Nobody can log in as administrator | On the computer DocSage runs on: `scripts/reset_admin.py <username>` prints a new temporary password. |
-| No results for anything | Nothing is indexed yet. Import your files with **Add documents** on the Documents tab. |
-| A document shows "unsupported" | It is scanned or password-protected. Out of scope for this version. |
-| A document shows "failed" | The file is damaged. The reason is shown next to it. |
-| Results look unrelated | Check the Documents tab first: the document you expected may not be indexed. |
-| No **Answer** box above the results | Answers are off: switched off under **Appearance**, or this computer has no graphics card answers can use, or the answer model is not running. Search works as before. |
+| No results for anything | Nothing is indexed yet, or you are not logged in and nothing is public. Log in, then upload your files from **Manage documents**. |
+| A document shows "No text" | It is scanned or password-protected. Out of scope for this version. |
+| A document shows "Failed" | The file is damaged. Point at the label for the reason; **Retry** tries again. |
+| A document shows "Not indexed" | It was uploaded but never indexed. Use **Index now**. |
+| Results look unrelated | Check **Manage documents** first: the document you expected may not be indexed. |
+| The panel says "Couldn't pinpoint the passage" | The document opened at the right page, but its text layer differs from the indexed text (columns or tables, usually). Read the page; the search terms are still marked. |
+| "Can't preview this file" | The browser cannot show this particular file. **Download** opens it in Word or a PDF reader. |
+| No **Answer** box above the results | Answers are off: switched off in **Settings → Search**, or this computer has no graphics card answers can use, or the answer model is not running. Search works as before. |
 | "The answer model is not running" | The results are fine; only the answer is missing. Restart DocSage, or ask an administrator to. |
 | "I couldn't find this in your documents" | Nothing found answers the question. Read the results anyway, or ask more specifically. |
 

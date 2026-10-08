@@ -17,17 +17,22 @@ Getting started
 3. The first time, create the administrator account. This only works on this
    computer, not from another one on the network.
 
-4. On the Documents tab, press "Add documents" and import PDF or Word (.docx)
-   files. Each person's files are private to them; an administrator can make
-   any document public so everyone can find it. Files put into the documents
-   folder next to this file by hand are indexed too, visible to
-   administrators until they make them public.
+4. Open "Manage documents" from the account menu (your initial, top right)
+   and upload PDF or Word (.docx) files; they are indexed as they arrive.
+   Each person's files are private to them; an administrator can make any
+   document public so everyone can find it, even without logging in. Files
+   put into the documents folder next to this file by hand are the library:
+   an administrator indexes them with "Index now" in the Library view, and
+   only administrators see them until they make them public.
 
-5. Press "Index documents". Indexing reads every page and is slow the first
-   time. It picks up where it left off if you stop it.
+5. Indexing reads every page and is slow the first time. A panel at the
+   bottom right shows each file's progress; closing it, or the browser,
+   does not stop it. Anything left unindexed is picked up the next time
+   DocSage starts, or with "Index now".
 
-6. Search from the Search tab. Chinese and Korean queries both work, and a
-   query in one language finds passages in the other.
+6. Search from the box on the start page. Chinese and Korean queries both
+   work, and a query in one language finds passages in the other. Click a
+   result to open the document itself at that passage.
 
 Double-click stop.bat when you are finished, or just close the windows titled
 "SPS Server" and "Answer Model".
@@ -60,7 +65,7 @@ failed.
     Run stop.bat first, then run.bat.
 
 Search finds nothing
-    Check the Documents tab shows your files as indexed. If the counts look
+    Check "Manage documents" shows your files as indexed. If the counts look
     wrong, stop the app and run this from a command prompt in this folder:
         runtime\python\python.exe scripts\rebuild_manifest.py
 
@@ -81,7 +86,9 @@ Sharing it on your network
 --------------------------
 
 run.bat lan  serves the interface to other computers on the same network and
-prints the address to use. Everyone logs in and sees only their own documents
+prints the address to use. PUBLIC DOCUMENTS CAN BE SEARCHED BY ANYONE ON THE
+NETWORK WITHOUT LOGGING IN: that is what making a document public means.
+Everything else needs a login, and each person sees only their own documents
 and public ones. The connection is not encrypted, so passwords and documents
 cross the network as plain text: use it only on a network you trust.
 
