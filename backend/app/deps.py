@@ -49,7 +49,7 @@ class Container:
     # Optional so a container of fakes needs no device; without it the status endpoint
     # simply reports no usage.
     device_monitor: DeviceUsageMonitor | None = None
-    throttles: Throttles = field(default_factory=lambda: Throttles(login_failures=5))
+    throttles: Throttles = field(default_factory=Throttles)
     # Without a model configured this still exists and answers "unavailable", so the
     # routes need no special case.
     answers: AnswerService = field(default_factory=lambda: AnswerService(model=None))
@@ -220,7 +220,6 @@ def build_container(settings: Settings) -> Container:
         ),
         access=access,
         answers=build_answers(settings, where, reranker),
-        throttles=Throttles(login_failures=settings.auth_login_max_failures),
         device_monitor=DeviceUsageMonitor(device=where, name=device.name),
     )
 

@@ -132,12 +132,11 @@ class TestLogin:
         assert wrong.status_code == unknown.status_code == 401
         assert wrong.json() == unknown.json()
 
-    def test_the_sixth_failure_in_a_row_is_throttled(self, anon: TestClient) -> None:
-        for _ in range(5):
+    def test_repeated_failures_never_lock_the_account(self, anon: TestClient) -> None:
+        for _ in range(40):
             anon.post("/api/auth/login", json={"username": ADMIN_NAME, "password": "wrong-pass"})
         response = anon.post("/api/auth/login", json={"username": ADMIN_NAME, "password": PASSWORD})
-        assert response.status_code == 429
-        assert int(response.headers["Retry-After"]) > 0
+        assert response.status_code == 200
 
     def test_a_disabled_account_is_told_so_only_with_the_right_password(
         self, client: TestClient, user_client, anon: TestClient

@@ -122,7 +122,6 @@ class Settings(BaseSettings):
     auth_session_max_days: int = Field(default=30, ge=1)
     # Only behind HTTPS: over plain HTTP a Secure cookie is never sent back.
     auth_cookie_secure: bool = False
-    auth_login_max_failures: int = Field(default=5, ge=1)
     auth_reset_request_hours: int = Field(default=24, ge=1)
 
     # Service

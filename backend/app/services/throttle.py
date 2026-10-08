@@ -1,5 +1,5 @@
 # backend/app/services/throttle.py
-"""Sliding-window rate limits for logins and password reset requests."""
+"""Sliding-window rate limit for password reset requests."""
 
 from __future__ import annotations
 
@@ -30,10 +30,6 @@ class Throttle:
         with self._lock:
             self._prune(key).append(time.monotonic())
 
-    def clear(self, key: str) -> None:
-        with self._lock:
-            self._events.pop(key, None)
-
     def _prune(self, key: str) -> deque[float]:
         events = self._events.setdefault(key, deque())
         cutoff = time.monotonic() - self._window
@@ -43,7 +39,5 @@ class Throttle:
 
 
 class Throttles:
-    def __init__(self, login_failures: int) -> None:
-        self.login_by_name = Throttle(login_failures, 15 * 60)
-        self.login_by_ip = Throttle(30, 15 * 60)
+    def __init__(self) -> None:
         self.reset_requests_by_ip = Throttle(5, 60 * 60)

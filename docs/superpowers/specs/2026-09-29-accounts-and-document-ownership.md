@@ -185,7 +185,7 @@ scrypt against a fixed dummy hash, so response time does not reveal which userna
 | `GET /status` | — | `{setup_required, registration_open, user \| null}` | never fails |
 | `POST /setup` | `{username, password}` | 201 `{user}`, sets cookie | 409 if any user exists; 403 if the request is not from loopback |
 | `POST /register` | `{username, password}` | 201 `{user}`, sets cookie | 403 registration closed; 409 username taken; 422 rules in §1.3 |
-| `POST /login` | `{username, password}` | 200 `{user}`, sets cookie | 401 `Wrong username or password`; 403 `This account is disabled`; 429 throttled |
+| `POST /login` | `{username, password}` | 200 `{user}`, sets cookie | 401 `Wrong username or password`; 403 `This account is disabled` |
 | `POST /logout` | — | 204, clears cookie, deletes the session row | — |
 | `GET /me` | — | 200 `{user}` (admins also get `pending_reset_requests: int`) | 401 |
 | `POST /password` | `{current_password, new_password}` | 204; every **other** session of this user is revoked | 400 wrong current password; 422 rules |
@@ -295,9 +295,7 @@ expecting — for example, Kim said they forgot their password and the time and 
 An unexpected request should be denied. Requests, approvals and denials are logged with
 username, admin and IP (§6).
 
-**Login throttling**, in memory (it resets on restart, which is acceptable for a local
-tool): 5 failed logins per **username** per 15 minutes, and 30 per **client IP** per 15
-minutes, then 429 with `Retry-After`.
+**Logins are not throttled**: failed attempts never lock an account or make anyone wait.
 
 ### 1.7 First run
 
@@ -658,7 +656,6 @@ Added to `Settings` in [config.py](backend/app/config.py) and to `.env.example`:
 | `AUTH_SESSION_IDLE_DAYS` | `7` | |
 | `AUTH_SESSION_MAX_DAYS` | `30` | |
 | `AUTH_COOKIE_SECURE` | `false` | Set `true` only behind HTTPS |
-| `AUTH_LOGIN_MAX_FAILURES` | `5` | Per username per 15 minutes |
 | `AUTH_RESET_REQUEST_HOURS` | `24` | How long a pending reset request waits for an admin |
 
 The user uploads folder is derived, `PDF_DIRECTORY / "users"`, not configured, so it can
@@ -751,7 +748,7 @@ Backend tests use the existing fakes in `backend/tests/conftest.py` and a tempor
 - T1.1 Setup from loopback creates an admin; a second setup is 409; setup from a non-loopback client is 403.
 - T1.2 Register → logged in; duplicate username differing only in case → 409; reserved name → 422; 7-char password → 422; `김철수` or `kim chul` → 422 (English only, no spaces).
 - T1.3 Login wrong password and unknown username return identical 401 bodies.
-- T1.4 Six failed logins for one username within 15 min → the sixth is 429 with `Retry-After`.
+- T1.4 Forty failed logins for one username, then the right password → 200; logins never lock.
 - T1.5 Reset happy path: request → status `pending` → admin approves → status `approved` → complete sets the password, logs in, and every earlier session of that user is 401.
 - T1.6 Reset request for an unknown username returns the same shape as for a real one, stores nothing, and never appears in the admin's list.
 - T1.7 Complete before approval → 400; complete 61 minutes after approval → 400; pending request older than 24 h → `expired`.

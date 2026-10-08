@@ -50,7 +50,6 @@ from app.services.passwords import (
     hash_password,
     needs_rehash,
     new_token,
-    username_key,
     verify_password,
 )
 
@@ -121,30 +120,18 @@ def register(
 @router.post("/login", response_model=MeResponse)
 def login(
     body: Credentials,
-    request: Request,
     response: Response,
     container: Container = Depends(get_container),
 ) -> MeResponse:
-    throttles = container.throttles
-    name_key = username_key(body.username)
-    ip = client_ip(request) or "?"
-    for throttle, key in ((throttles.login_by_name, name_key), (throttles.login_by_ip, ip)):
-        wait = throttle.retry_after(key)
-        if wait is not None:
-            raise too_many(wait)
-
     user = container.access.find_user(body.username)
     stored = container.access.password_hash(user.user_id) if user else None
     # An unknown name still pays for one scrypt, so timing does not reveal it.
     valid = verify_password(body.password, stored or DUMMY_HASH) and user is not None
     if not valid or user is None or stored is None:
-        throttles.login_by_name.hit(name_key)
-        throttles.login_by_ip.hit(ip)
         raise HTTPException(status_code=401, detail=_WRONG_LOGIN)
     if user.disabled:
         raise HTTPException(status_code=403, detail="This account is disabled")
 
-    throttles.login_by_name.clear(name_key)
     if needs_rehash(stored):
         container.access.set_password(
             user.user_id, hash_password(body.password), user.must_change_password

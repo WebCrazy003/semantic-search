@@ -185,7 +185,7 @@ These are recognised gaps, not oversights. Each is a candidate for a later relea
 |---|---|
 | "Cannot reach the backend" | The search service is not running. Start it. |
 | Sent back to the login page | Your session ended: you were logged out elsewhere, or an administrator changed your account. Log in again. |
-| "Too many attempts" | Several wrong passwords in a row. Wait a few minutes. |
+| "Too many attempts" | Several password reset requests from this computer within an hour. Wait and try again. |
 | Nobody can log in as administrator | On the computer DocSage runs on: `scripts/reset_admin.py <username>` prints a new temporary password. |
 | No results for anything | Nothing is indexed yet. Import your files with **Add documents** on the Documents tab. |
 | A document shows "unsupported" | It is scanned or password-protected. Out of scope for this version. |
