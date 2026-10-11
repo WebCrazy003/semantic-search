@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -58,17 +59,40 @@ LLM_REPO = "unsloth/Qwen3-4B-Instruct-2507-GGUF"
 LLM_FILE = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 LLM_TARGET = REPO_ROOT / "models" / "llm"
 
+# Tries per model. The first goes through the hub's Xet backend, which is fast but
+# drops the whole file when a slow or flaky connection breaks a chunk ("CAS Client
+# Error ... error decoding response body"). The rest use plain HTTPS, which picks up
+# a partial file where it stopped.
+ATTEMPTS = 4
+
+
+def with_retries(name: str, fetch: Callable[[], object]) -> bool:
+    from huggingface_hub import constants
+
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            fetch()
+            return True
+        except Exception as exc:  # network, disk or hub errors all end the same way
+            print(f"WARN  {name}: attempt {attempt} of {ATTEMPTS} failed: {exc}")
+        if not constants.HF_HUB_DISABLE_XET:
+            print("      switching to plain HTTPS downloads")
+            constants.HF_HUB_DISABLE_XET = True
+        if attempt < ATTEMPTS:
+            time.sleep(5 * attempt)
+    print(f"FAIL  {name}: download did not complete")
+    return False
+
 
 def download_llm() -> bool:
     from huggingface_hub import hf_hub_download
 
     LLM_TARGET.mkdir(parents=True, exist_ok=True)
     print(f"downloading {LLM_REPO}/{LLM_FILE} into {LLM_TARGET} ...")
-    try:
-        path = Path(hf_hub_download(LLM_REPO, LLM_FILE, local_dir=str(LLM_TARGET)))
-    except Exception as exc:  # network, disk or hub errors all end the same way
-        print(f"FAIL  llm: {exc}")
+    fetch = partial(hf_hub_download, LLM_REPO, LLM_FILE, local_dir=str(LLM_TARGET))
+    if not with_retries("llm", fetch):
         return False
+    path = LLM_TARGET / LLM_FILE
     print(f"OK    llm ready at {path} ({path.stat().st_size / 1024**3:.2f} GB)")
     return True
 
@@ -78,12 +102,15 @@ def download(name: str, model: Model) -> bool:
 
     model.target.parent.mkdir(parents=True, exist_ok=True)
     print(f"downloading {model.repo_id} into {model.target} ...")
-    snapshot_download(
+    fetch = partial(
+        snapshot_download,
         repo_id=model.repo_id,
         local_dir=str(model.target),
         ignore_patterns=["onnx/*", "*.onnx", "imgs/*", "assets/*", "*.msgpack", "*.h5"],
         max_workers=4,
     )
+    if not with_retries(name, fetch):
+        return False
 
     missing = [file for file in model.required if not (model.target / file).exists()]
     if not any((model.target / file).exists() for file in WEIGHTS):
