@@ -11,6 +11,7 @@ are skipped because sentence-transformers does not use them.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 import time
@@ -61,9 +62,15 @@ LLM_TARGET = REPO_ROOT / "models" / "llm"
 
 # Tries per model. The first goes through the hub's Xet backend, which is fast but
 # drops the whole file when a slow or flaky connection breaks a chunk ("CAS Client
-# Error ... error decoding response body"). The rest use plain HTTPS, which picks up
-# a partial file where it stopped.
+# Error ... error decoding response body"); the rest use plain HTTPS. Either way the
+# hub deletes a partial file when a download fails, so these models restart; they
+# are small next to the answer model, which download_llm resumes itself.
 ATTEMPTS = 4
+
+# The answer model gives up only after this many tries in a row that add no bytes,
+# about a quarter of an hour of a dead connection (a VPN reconnecting, say).
+LLM_STALLED_TRIES = 20
+CHUNK = 1024 * 1024
 
 
 def with_retries(name: str, fetch: Callable[[], object]) -> bool:
@@ -84,16 +91,84 @@ def with_retries(name: str, fetch: Callable[[], object]) -> bool:
     return False
 
 
-def download_llm() -> bool:
-    from huggingface_hub import hf_hub_download
+def fetch_range(url: str, headers: dict[str, str], part: Path, size: int) -> None:
+    """Append to `part` from where it stops until it holds `size` bytes."""
+    import httpx
+    from tqdm import tqdm
 
+    have = part.stat().st_size if part.exists() else 0
+    timeout = httpx.Timeout(30.0, read=60.0)
+    with httpx.stream(
+        "GET", url, headers={**headers, "Range": f"bytes={have}-"}, follow_redirects=True, timeout=timeout
+    ) as response:
+        response.raise_for_status()
+        if response.status_code != 206:  # the server ignored the range: start over
+            have = 0
+        with part.open("ab" if have else "wb") as f, tqdm(
+            total=size, initial=have, unit="B", unit_scale=True, desc=LLM_FILE
+        ) as bar:
+            for chunk in response.iter_bytes(CHUNK):
+                f.write(chunk)
+                bar.update(len(chunk))
+
+
+def sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while block := f.read(16 * CHUNK):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def download_llm() -> bool:
+    """One large file, fetched by hand so a dropped connection keeps what arrived.
+
+    The bytes collect in <file>.part beside the target and every retry asks only for
+    the rest, so a break at 43% picks up at 43%. The file is checked against the
+    size and SHA-256 the hub publishes before it takes its real name.
+    """
+    from huggingface_hub import get_hf_file_metadata, hf_hub_url
+    from huggingface_hub.utils import build_hf_headers
+
+    target = LLM_TARGET / LLM_FILE
+    part = target.with_name(target.name + ".part")
     LLM_TARGET.mkdir(parents=True, exist_ok=True)
+    url = hf_hub_url(LLM_REPO, LLM_FILE)
+    headers = build_hf_headers()
     print(f"downloading {LLM_REPO}/{LLM_FILE} into {LLM_TARGET} ...")
-    fetch = partial(hf_hub_download, LLM_REPO, LLM_FILE, local_dir=str(LLM_TARGET))
-    if not with_retries("llm", fetch):
+
+    meta = None
+    stalled = 0
+    while meta is None or not part.exists() or part.stat().st_size < meta.size:
+        before = part.stat().st_size if part.exists() else 0
+        try:
+            meta = meta or get_hf_file_metadata(url, headers=headers)
+            fetch_range(url, headers, part, meta.size)
+        except Exception as exc:  # DNS, TLS, timeouts and resets all mean "try again"
+            print(f"WARN  llm: {exc}")
+        after = part.stat().st_size if part.exists() else 0
+        stalled = 0 if after > before else stalled + 1
+        if meta is not None and after >= meta.size:
+            break
+        if stalled >= LLM_STALLED_TRIES:
+            print(f"FAIL  llm: no progress in {stalled} tries; {after / 1024**3:.2f} GB kept in {part.name}")
+            return False
+        wait = min(60, 5 * stalled) or 2
+        print(f"      resuming from {after / 1024**3:.2f} GB in {wait}s ...")
+        time.sleep(wait)
+
+    if part.stat().st_size != meta.size:
+        print(f"FAIL  llm: {part.name} is larger than the published size; delete it and run again")
         return False
-    path = LLM_TARGET / LLM_FILE
-    print(f"OK    llm ready at {path} ({path.stat().st_size / 1024**3:.2f} GB)")
+    expected = (meta.etag or "").strip('"').lower()
+    if len(expected) == 64:
+        print("      checking SHA-256 ...")
+        if sha256_of(part) != expected:
+            part.unlink()
+            print("FAIL  llm: the file is corrupt and was deleted; run this again")
+            return False
+    part.replace(target)
+    print(f"OK    llm ready at {target} ({target.stat().st_size / 1024**3:.2f} GB)")
     return True
 
 
