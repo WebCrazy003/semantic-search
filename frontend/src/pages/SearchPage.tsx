@@ -1,6 +1,6 @@
 // frontend/src/pages/SearchPage.tsx
-import { Alert, Drawer, Empty, Grid, Select, Skeleton, Space, Typography } from 'antd'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { Alert, Drawer, Empty, Grid, Skeleton, Space, Typography } from 'antd'
+import { useEffect, useRef, type KeyboardEvent } from 'react'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { useCitedResults } from '../app/AnswerContext'
 import { useAuth } from '../app/AuthContext'
@@ -8,8 +8,6 @@ import { keyOf, useSearchContext } from '../app/SearchContext'
 import { AnswerPanel } from '../components/AnswerPanel'
 import { ResultCard } from '../components/ResultCard'
 import { ResultDetail } from '../components/ResultDetail'
-import { listUsers } from '../services/api'
-import { LANGUAGES, TOP_K_CHOICES } from '../settings/settings'
 
 /**
  * The results page, laid out like Google's (spec 2026-10-08 §1.1). The query is in the
@@ -21,27 +19,8 @@ export function SearchPage() {
   const q = params.get('q')?.trim() ?? ''
   const screens = Grid.useBreakpoint()
   const listRef = useRef<HTMLDivElement>(null)
-  const {
-    query, response, selected, select, topK, setTopK, language, setLanguage, busy, error, run,
-    scope, setScope, owner, setOwner, visibility, setVisibility,
-  } = useSearchContext()
-  const { phase, user, isAdmin } = useAuth()
-  const [owners, setOwners] = useState<{ value: string; label: string }[]>([])
-
-  // An admin can narrow to one owner, so the select needs everyone's name.
-  useEffect(() => {
-    if (!isAdmin) return
-    let cancelled = false
-    listUsers()
-      .then((users) => {
-        if (cancelled) return
-        setOwners(users.map((user) => ({ value: user.user_id, label: user.username })))
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [isAdmin])
+  const { query, response, selected, select, busy, error, run } = useSearchContext()
+  const { phase } = useAuth()
 
   // A new ?q runs it. Coming back to the same query (from the admin page, say) keeps the
   // results already on hand rather than searching again. A results address opened
@@ -141,75 +120,6 @@ export function SearchPage() {
 
   return (
     <div className="page search-page">
-      <div className="search-tools">
-        <Space size="small" className="search-filters" wrap>
-          <Select
-            size="small"
-            variant="filled"
-            aria-label="Results to show"
-            value={topK}
-            onChange={setTopK}
-            popupMatchSelectWidth={false}
-            options={TOP_K_CHOICES.map((choice) => ({
-              value: choice,
-              label: `${choice} results`,
-            }))}
-          />
-          <Select
-            size="small"
-            variant="filled"
-            aria-label="Language"
-            value={language}
-            onChange={setLanguage}
-            popupMatchSelectWidth={false}
-            options={LANGUAGES}
-          />
-          {isAdmin ? (
-            <>
-              <Select
-                size="small"
-                variant="filled"
-                aria-label="Owner"
-                value={owner}
-                onChange={setOwner}
-                popupMatchSelectWidth={false}
-                options={[
-                  { value: '', label: 'Everyone' },
-                  ...owners,
-                ]}
-              />
-              <Select
-                size="small"
-                variant="filled"
-                aria-label="Visibility"
-                value={visibility}
-                onChange={setVisibility}
-                popupMatchSelectWidth={false}
-                options={[
-                  { value: '', label: 'Public and private' },
-                  { value: 'public', label: 'Public only' },
-                  { value: 'private', label: 'Private only' },
-                ]}
-              />
-            </>
-          ) : user ? (
-            <Select
-              size="small"
-              variant="filled"
-              aria-label="Show"
-              value={scope}
-              onChange={setScope}
-              popupMatchSelectWidth={false}
-              options={[
-                { value: 'all', label: 'Mine and public' },
-                { value: 'mine', label: 'Only mine' },
-                { value: 'public', label: 'Only public' },
-              ]}
-            />
-          ) : null}
-        </Space>
-      </div>
-
       {error ? <Alert type="error" showIcon message={error} className="page-alert" /> : null}
 
       {/* Above the results, which stay where they are below it. */}

@@ -29,8 +29,6 @@ import {
   type SearchHit,
   type SearchParams,
   type SearchResponse,
-  type SearchScope,
-  type Visibility,
 } from '../services/api'
 import { useSettings } from '../settings/SettingsContext'
 import { useAuth } from './AuthContext'
@@ -51,19 +49,6 @@ interface SearchContextValue {
   response: SearchResponse | null
   selected: SearchHit | null
   select: (hit: SearchHit | null) => void
-  topK: number
-  setTopK: (topK: number) => void
-  language: string
-  setLanguage: (language: string) => void
-  /** Regular users: their own documents, public ones, or both. */
-  scope: SearchScope
-  setScope: (scope: SearchScope) => void
-  /** Admins: '' for everyone, or a user id. */
-  owner: string
-  setOwner: (owner: string) => void
-  /** Admins: '' for either. */
-  visibility: Visibility | ''
-  setVisibility: (visibility: Visibility | '') => void
   busy: boolean
   error: string | null
   run: (query: string) => Promise<void>
@@ -79,13 +64,10 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // The settings are the starting point, not a binding: changing the control on the
-  // search page must not be undone by a later settings read.
-  const [topK, setTopK] = useState(settings.resultsPerSearch)
-  const [language, setLanguage] = useState(settings.defaultLanguage)
-  const [scope, setScope] = useState<SearchScope>('all')
-  const [owner, setOwner] = useState('')
-  const [visibility, setVisibility] = useState<Visibility | ''>('')
+  // How many results and in which language come from the settings alone: the results
+  // page has no controls of its own. Everything the searcher may see is searched.
+  const topK = settings.resultsPerSearch
+  const language = settings.defaultLanguage
 
   const [answer, dispatch] = useReducer(answerReducer, IDLE)
 
@@ -172,10 +154,6 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         query: nextQuery,
         topK,
         ...(language ? { language } : {}),
-        ...(scope !== 'all' ? { scope } : {}),
-        // The backend ignores these for anyone but an admin.
-        ...(owner ? { ownerId: owner } : {}),
-        ...(visibility ? { visibility } : {}),
       }
 
       function showResults(result: SearchResponse) {
@@ -251,7 +229,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
         if (current()) setBusy(false)
       }
     },
-    [topK, language, scope, owner, visibility, shouldAsk, markUnavailable],
+    [topK, language, shouldAsk, markUnavailable],
   )
 
   // Who is searching. Someone who must change their password reads as a visitor, as
@@ -282,21 +260,11 @@ export function SearchProvider({ children }: { children: ReactNode }) {
       response,
       selected,
       select: setSelected,
-      topK,
-      setTopK,
-      language,
-      setLanguage,
-      scope,
-      setScope,
-      owner,
-      setOwner,
-      visibility,
-      setVisibility,
       busy,
       error,
       run,
     }),
-    [query, response, selected, topK, language, scope, owner, visibility, busy, error, run],
+    [query, response, selected, busy, error, run],
   )
 
   return (

@@ -1,9 +1,9 @@
 // frontend/src/components/AccountMenu.tsx
-// The top-right corner of every screen: settings, and either a Log in button or the
-// account avatar with its menu (spec 2026-10-08 §1.1, §1.2).
+// The top-right corner of every screen: the document manager once logged in, settings,
+// and either a Log in button or the account avatar with its menu (spec 2026-10-08 §1.1,
+// §1.2).
 import {
   ExperimentOutlined,
-  ExportOutlined,
   FolderOpenOutlined,
   KeyOutlined,
   LogoutOutlined,
@@ -32,8 +32,21 @@ export function openDocumentManager(): void {
 
 export function TopActions() {
   const { show } = useDialogs()
+  const { user } = useAuth()
   return (
-    <Space size={4} className="top-actions">
+    <Space size={12} align="center" className="top-actions">
+      {user ? (
+        <Tooltip title="Manage documents (opens in a new tab)">
+          <Button
+            type="text"
+            shape="circle"
+            size="large"
+            aria-label="Manage documents"
+            icon={<FolderOpenOutlined aria-hidden="true" />}
+            onClick={openDocumentManager}
+          />
+        </Tooltip>
+      ) : null}
       <Tooltip title="Settings">
         <Button
           type="text"
@@ -73,15 +86,6 @@ export function AccountMenu() {
       ),
     },
     { type: 'divider' },
-    {
-      key: 'documents',
-      icon: <FolderOpenOutlined />,
-      label: (
-        <span className="account-item-external">
-          Manage documents <ExportOutlined aria-label="opens in a new tab" />
-        </span>
-      ),
-    },
     { key: 'password', icon: <KeyOutlined />, label: 'Change password' },
     ...(isAdmin
       ? [
@@ -105,7 +109,6 @@ export function AccountMenu() {
   ]
 
   const onClick: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'documents') openDocumentManager()
     if (key === 'password') show('password')
     if (key === 'users') navigate('/admin/users')
     if (key === 'admin') navigate('/admin')

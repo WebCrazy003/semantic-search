@@ -21,7 +21,6 @@ import {
   loggedOut,
   makeDriveFile,
   renderApp,
-  renderResults,
 } from './helpers'
 
 beforeEach(() => {
@@ -343,12 +342,11 @@ describe('a password that must change', () => {
 })
 
 describe('the account menu', () => {
-  it('opens the document manager in a new tab', async () => {
+  it('opens the document manager in a new tab from its own top-right button', async () => {
     asUser()
     const open = vi.spyOn(window, 'open').mockReturnValue(null)
     renderApp()
-    await openAccountMenu('kim')
-    await userEvent.click(await screen.findByText('Manage documents'))
+    await userEvent.click(await screen.findByRole('button', { name: 'Manage documents' }))
     expect(open).toHaveBeenCalledWith(expect.stringMatching(/#\/drive$/), '_blank', 'noopener')
     // This tab stays where it was.
     expect(currentLocation()).toBe('/')
@@ -492,22 +490,6 @@ describe('a regular user', () => {
     expect(screen.queryByText('mine.pdf')).not.toBeInTheDocument()
     await userEvent.click(within(row).getByRole('button', { name: /make private/i }))
     expect(unpublish).toHaveBeenCalledWith(['o'.repeat(64)], 'private')
-  })
-
-  it('chooses between their own documents and public ones when searching', async () => {
-    asUser()
-    const search = vi
-      .spyOn(api, 'search')
-      .mockResolvedValue({ query: 'x', count: 0, took_ms: 1, results: [] })
-    renderResults('x')
-    await screen.findByRole('button', { name: 'Account: kim' })
-    await userEvent.click(await screen.findByLabelText('Show'))
-    await userEvent.click(await screen.findByTitle('Only public'))
-    // The same query again re-runs it with the new scope.
-    await userEvent.type(screen.getByRole('textbox', { name: /search documents/i }), '{Enter}')
-    await waitFor(() =>
-      expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ scope: 'public' })),
-    )
   })
 })
 

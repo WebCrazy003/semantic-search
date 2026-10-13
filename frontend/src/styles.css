@@ -12,18 +12,18 @@
   --search-box-bg: #ffffff;
   --search-box-border: #dfe1e5;
   --search-box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
-  --brand-doc: #202124;
+  --brand-doc: #d93025;
   --brand-sage: #4285f4;
   --quiet-text: #70757a;
   --error: #ff4d4f;
   --overlap: rgba(250, 173, 20, 0.28);
   --surface-subtle: rgba(0, 0, 0, 0.02);
   /* How close a result is: the highlight tint and the quiet dot beside its label. */
-  --relevance-strong: #52c41a;
-  --relevance-good: #faad14;
+  --relevance-strong: #389e0d;
+  --relevance-good: #73d13d;
   --relevance-weak: #bfbfbf;
-  --mark-strong: rgba(82, 196, 26, 0.26);
-  --mark-good: rgba(250, 173, 20, 0.28);
+  --mark-strong: rgba(56, 158, 13, 0.3);
+  --mark-good: rgba(115, 209, 61, 0.24);
   --mark-weak: rgba(0, 0, 0, 0.07);
   --result-title: #1a0dab;
 }
@@ -36,16 +36,16 @@
   --search-box-bg: #303134;
   --search-box-border: #5f6368;
   --search-box-shadow: 0 1px 6px rgba(23, 23, 23, 0.6);
-  --brand-doc: #ffffff;
+  --brand-doc: #f25c54;
   --brand-sage: #8ab4f8;
   --quiet-text: #9aa0a6;
   --overlap: rgba(250, 173, 20, 0.22);
   --surface-subtle: rgba(255, 255, 255, 0.04);
   --relevance-strong: #49aa19;
-  --relevance-good: #d89614;
+  --relevance-good: #8fd460;
   --relevance-weak: #595959;
-  --mark-strong: rgba(73, 170, 25, 0.32);
-  --mark-good: rgba(216, 150, 20, 0.32);
+  --mark-strong: rgba(73, 170, 25, 0.36);
+  --mark-good: rgba(143, 212, 96, 0.22);
   --mark-weak: rgba(255, 255, 255, 0.12);
   --result-title: #8ab4f8;
 }
@@ -99,17 +99,6 @@ body {
 
 .account-who {
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
-}
-
-.account-item-external {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.account-item-external .anticon {
-  font-size: 11px;
-  opacity: 0.6;
 }
 
 /* Home: nothing but the wordmark and the box, a little above the middle. */
@@ -191,6 +180,81 @@ body {
 .search-bar .ant-input-prefix {
   margin-inline-end: 12px;
   color: var(--quiet-text);
+}
+
+/* Recent searches, dropped down from the box like Google's suggestions. */
+.search-bar-field {
+  position: relative;
+}
+
+.search-history {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  background: var(--ant-color-bg-elevated, #ffffff);
+  border-radius: 16px;
+  box-shadow: var(--search-box-shadow);
+}
+
+.search-history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px 4px 16px;
+  cursor: pointer;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.search-history-item.active {
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.search-history-icon {
+  flex: none;
+  color: var(--quiet-text);
+}
+
+.search-history-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-history-remove.ant-btn {
+  flex: none;
+  color: var(--quiet-text);
+  visibility: hidden;
+}
+
+.search-history-item.active .search-history-remove.ant-btn {
+  visibility: visible;
+}
+
+/* The home page's last two searches, as shortcuts under its box. */
+.search-recent {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.search-recent-chip.ant-btn {
+  max-width: 240px;
+  color: var(--quiet-text);
+}
+
+.search-recent-chip.ant-btn > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Every other screen: a slim header with the wordmark, the box on results, and the
@@ -287,16 +351,11 @@ body {
 
 /* Like a web search page: one left-aligned column at reading width, lined up with
    the header's search box above it. */
-.search-tools,
 .result-meta,
 .result-list,
 .answer-panel,
 .search-page .page-alert {
   max-width: 692px;
-}
-
-.search-tools {
-  margin-bottom: 12px;
 }
 
 .result-meta {
@@ -413,7 +472,7 @@ body {
   overflow: hidden;
 }
 
-/* The highlight colour says how close the match is: green, amber, then grey. */
+/* The highlight colour says how close the match is: deep green, light green, then grey. */
 .result-card mark,
 .result-detail mark {
   background: var(--mark-weak);

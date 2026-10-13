@@ -49,9 +49,9 @@ describe('HomePage', () => {
 
   it('has one search box, focused, and no search button', async () => {
     renderApp()
-    const box = await screen.findByRole('textbox', { name: 'Search documents' })
+    const box = await screen.findByRole('combobox', { name: 'Search documents' })
     expect(box).toHaveFocus()
-    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
     expect(screen.queryByRole('button', { name: /^search/i })).not.toBeInTheDocument()
   })
 
@@ -59,7 +59,6 @@ describe('HomePage', () => {
     renderApp()
     await screen.findByRole('heading', { name: 'DocSage' })
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /manage documents/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/find knowledge locally/i)).not.toBeInTheDocument()
   })
 
@@ -122,7 +121,7 @@ describe('searching from here', () => {
     expect(await screen.findByTestId('result-card')).toBeInTheDocument()
     expect(spy).toHaveBeenCalledWith({ query: '更换滤芯', topK: 10 })
     // The results layout: the header carries the box, the query and the same buttons.
-    expect(screen.getByRole('textbox', { name: 'Search documents' })).toHaveValue('更换滤芯')
+    expect(screen.getByRole('combobox', { name: 'Search documents' })).toHaveValue('更换滤芯')
     expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Account: boss' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /go to the start page/i })).toBeInTheDocument()
@@ -150,7 +149,7 @@ describe('searching from here', () => {
   it('does nothing for an empty query', async () => {
     const spy = vi.spyOn(api, 'search')
     renderApp()
-    await userEvent.type(await screen.findByRole('textbox', { name: 'Search documents' }), '   {Enter}')
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Search documents' }), '   {Enter}')
     expect(currentLocation()).toBe('/')
     await waitFor(() => expect(spy).not.toHaveBeenCalled())
   })

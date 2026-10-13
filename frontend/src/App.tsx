@@ -22,6 +22,7 @@ function HeaderSearch() {
   const navigate = useNavigate()
   const location = useLocation()
   const { run, busy } = useSearchContext()
+  const { user } = useAuth()
   const q = new URLSearchParams(location.search).get('q') ?? ''
   return (
     <SearchBar
@@ -29,6 +30,7 @@ function HeaderSearch() {
       key={q}
       initialValue={q}
       busy={busy}
+      historyOwner={user?.user_id ?? null}
       onSearch={(query) => {
         // The same query again re-runs it; the URL would not change, so nothing else would.
         if (query === q) void run(query)

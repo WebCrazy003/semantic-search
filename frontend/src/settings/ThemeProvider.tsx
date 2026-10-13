@@ -32,6 +32,14 @@ function useDark(choice: 'system' | 'light' | 'dark'): boolean {
   return systemDark
 }
 
+/**
+ * antd 6 defines its CSS variables (--ant-color-text and the rest) on a class it puts on
+ * its own components only, so our stylesheet's var(--ant-...) never saw them and fell
+ * back to the light values: light panels with light text in dark mode. Naming that class
+ * and putting it on <html> too gives every rule, and every portal, the current theme's.
+ */
+const CSS_VAR_KEY = 'docsage-theme'
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { settings, reducedMotion } = useSettings()
   const dark = useDark(settings.theme)
@@ -46,6 +54,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // so it follows the theme without duplicating any token values.
   useEffect(() => {
     const root = document.documentElement
+    root.classList.add(CSS_VAR_KEY)
     root.dataset.theme = dark ? 'dark' : 'light'
     root.dataset.motion = reducedMotion ? 'reduced' : 'full'
     root.style.colorScheme = dark ? 'dark' : 'light'
@@ -56,6 +65,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       componentSize={compact ? 'small' : 'middle'}
       theme={{
         algorithm,
+        cssVar: { key: CSS_VAR_KEY },
         token: {
           colorPrimary: settings.accent,
           colorLink: settings.accent,

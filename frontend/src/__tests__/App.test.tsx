@@ -73,7 +73,7 @@ describe('routing', () => {
   it('opens on the home page', async () => {
     renderApp()
     expect(await screen.findByRole('heading', { name: 'DocSage' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Search documents' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Search documents' })).toBeInTheDocument()
   })
 
   it.each([
@@ -144,7 +144,7 @@ describe('the header', () => {
   it('shows the search box only on the results page', async () => {
     renderApp('/drive')
     await screen.findByText(/drop pdf or word files here/i)
-    expect(screen.queryByRole('textbox', { name: 'Search documents' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Search documents' })).not.toBeInTheDocument()
   })
 
   it('goes home from the wordmark', async () => {
@@ -230,7 +230,7 @@ describe('state across navigation', () => {
     await userEvent.click(screen.getByRole('link', { name: /go to the start page/i }))
     await searchFor('版本控制')
 
-    expect(screen.getByRole('textbox', { name: 'Search documents' })).toHaveValue('版本控制')
+    expect(screen.getByRole('combobox', { name: 'Search documents' })).toHaveValue('版本控制')
     expect(await screen.findAllByText('04_版本控制.pdf')).not.toHaveLength(0)
     expect(api.search).toHaveBeenCalledTimes(1)
   })

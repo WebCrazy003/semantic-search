@@ -24,7 +24,6 @@ vi.mock('../viewer/PdfView', () => ({
 import {
   USER,
   asUser,
-  chooseOption,
   currentLocation,
   findDialog,
   givenAnswers,
@@ -93,12 +92,15 @@ describe('the search row', () => {
     expect(bar?.querySelector('input')).toBeTruthy()
   })
 
-  it('offers the result count and language as compact controls, not full-width selects', async () => {
+  it('has no filter controls of its own: the settings choose the count and language', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
-    expect(await screen.findByLabelText('Results to show')).toBeInTheDocument()
-    expect(screen.getByLabelText('Language')).toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Results to show' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByTestId('result-card')).toHaveLength(2))
+    // The header's search box is the page's only combobox.
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+    for (const label of ['Results to show', 'Language', 'Owner', 'Visibility', 'Show']) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument()
+    }
   })
 })
 
@@ -125,7 +127,7 @@ describe('the query in the address', () => {
   it('shows the query in the header box', async () => {
     vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
-    expect(await screen.findByRole('textbox', { name: /search documents/i })).toHaveValue('更换滤芯')
+    expect(await screen.findByRole('combobox', { name: /search documents/i })).toHaveValue('更换滤芯')
   })
 
   it('replaces the query when a new one is typed in the header', async () => {
@@ -154,7 +156,7 @@ describe('the query in the address', () => {
     await searchFor('second')
     await goBack()
     expect(currentLocation()).toBe('/search?q=first')
-    expect(screen.getByRole('textbox', { name: /search documents/i })).toHaveValue('first')
+    expect(screen.getByRole('combobox', { name: /search documents/i })).toHaveValue('first')
     await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({ query: 'first', topK: 10 }))
   })
 
@@ -182,18 +184,18 @@ describe('searching', () => {
     await waitFor(() => expect(screen.getAllByTestId('result-card')).toHaveLength(2))
   })
 
-  it('passes the chosen result count to the API', async () => {
+  it('passes the result count from the settings to the API', async () => {
+    givenSettings({ resultsPerSearch: 20 })
     const spy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
-    await chooseOption('Results to show', '20 results')
     await searchFor('x')
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ query: 'x', topK: 20 }))
   })
 
-  it('passes the chosen language filter to the API', async () => {
+  it('passes the language filter from the settings to the API', async () => {
+    givenSettings({ defaultLanguage: 'ko' })
     const spy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
-    await chooseOption('Language', 'Korean')
     await searchFor('x')
     await waitFor(() => expect(spy).toHaveBeenCalledWith({ query: 'x', topK: 10, language: 'ko' }))
   })
@@ -232,7 +234,7 @@ describe('searching', () => {
   it('does not submit while an IME is composing', async () => {
     const spy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderApp()
-    const input = screen.getByRole('textbox', { name: /search documents/i })
+    const input = screen.getByRole('combobox', { name: /search documents/i })
     await userEvent.type(input, '더미')
     // A composition-in-progress Enter, as an IME candidate selection produces.
     input.dispatchEvent(
@@ -492,36 +494,21 @@ describe('a results link opened fresh', () => {
 })
 
 describe('who is searching', () => {
-  it('offers an administrator the owner and visibility filters', async () => {
-    vi.spyOn(api, 'listUsers').mockResolvedValue([])
-    vi.spyOn(api, 'search').mockResolvedValue(response)
+  it('searches everything an administrator may see, with no owner or visibility filter', async () => {
+    const spy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
-    expect(await screen.findByLabelText('Owner')).toBeInTheDocument()
-    expect(screen.getByLabelText('Visibility')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Show')).not.toBeInTheDocument()
-  })
-
-  it('offers a user the choice between their own documents and public ones', async () => {
-    asUser()
-    vi.spyOn(api, 'search').mockResolvedValue(response)
-    renderResults('更换滤芯')
-    await screen.findByRole('button', { name: 'Account: kim' })
-    expect(screen.getByLabelText('Show')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument()
-  })
-
-  it('shows a logged-out visitor no scope filter: they only ever see public documents', async () => {
-    loggedOut()
-    vi.spyOn(api, 'search').mockResolvedValue(response)
-    renderResults('更换滤芯')
-    await waitFor(() => expect(screen.getAllByTestId('result-card')).toHaveLength(2))
-    expect(screen.getByRole('button', { name: 'Log in' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Show')).not.toBeInTheDocument()
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ query: '更换滤芯', topK: 10 }))
     expect(screen.queryByLabelText('Owner')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Visibility')).not.toBeInTheDocument()
-    // The results-page tools a visitor does get.
-    expect(screen.getByLabelText('Results to show')).toBeInTheDocument()
-    expect(screen.getByLabelText('Language')).toBeInTheDocument()
+  })
+
+  it("searches a user's own documents and public ones together, with no scope filter", async () => {
+    asUser()
+    const spy = vi.spyOn(api, 'search').mockResolvedValue(response)
+    renderResults('更换滤芯')
+    await screen.findByRole('button', { name: 'Account: kim' })
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ query: '更换滤芯', topK: 10 }))
+    expect(screen.queryByLabelText('Show')).not.toBeInTheDocument()
   })
 
   it('runs the search again when the visitor logs in, for their own documents too', async () => {
@@ -541,9 +528,8 @@ describe('who is searching', () => {
     expect(await screen.findByRole('button', { name: 'Account: kim' })).toBeInTheDocument()
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
     expect(spy).toHaveBeenLastCalledWith({ query: '更换滤芯', topK: 10 })
-    // Still on the same results, now with the scope filter a user has.
+    // Still on the same results.
     expect(currentLocation()).toBe(`/search?q=${encodeURIComponent('更换滤芯')}`)
-    expect(screen.getByRole('combobox', { name: 'Show' })).toBeInTheDocument()
   })
 
   it('stays on the results after logging out, and searches again as a visitor', async () => {
@@ -674,14 +660,13 @@ describe('answers', () => {
     expect(screen.queryByRole('region', { name: 'Answer' })).not.toBeInTheDocument()
   })
 
-  it('falls back with the same filters the reader chose', async () => {
+  it('falls back with the same filters the settings chose', async () => {
     givenAnswers(true)
+    givenSettings({ defaultLanguage: 'ko' })
     vi.spyOn(api, 'ask').mockRejectedValue(new Error('Not Found'))
     const searchSpy = vi.spyOn(api, 'search').mockResolvedValue(response)
     renderResults('更换滤芯')
     await screen.findAllByTestId('result-card')
-    await chooseOption('Language', 'Korean')
-    await searchFor('更换滤芯')
 
     await waitFor(() =>
       expect(searchSpy).toHaveBeenLastCalledWith({ query: '更换滤芯', topK: 10, language: 'ko' }),

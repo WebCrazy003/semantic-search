@@ -174,7 +174,7 @@ export function renderResults(query: string) {
  * header box shows the current query, so it is cleared first.
  */
 export async function searchFor(query: string) {
-  const box = await screen.findByRole('textbox', { name: /search documents/i })
+  const box = await screen.findByRole('combobox', { name: /search documents/i })
   await userEvent.clear(box)
   await userEvent.type(box, `${query}{Enter}`)
 }
