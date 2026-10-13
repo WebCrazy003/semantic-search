@@ -132,6 +132,9 @@ def download_llm() -> bool:
 
     target = LLM_TARGET / LLM_FILE
     part = target.with_name(target.name + ".part")
+    if target.exists():
+        print(f"OK    llm already at {target}")
+        return True
     LLM_TARGET.mkdir(parents=True, exist_ok=True)
     url = hf_hub_url(LLM_REPO, LLM_FILE)
     headers = build_hf_headers()

@@ -161,8 +161,8 @@ rem ---------------------------------------------------------------- 6. models
 echo.
 echo [6/10] Models: BGE-M3 for search, the reranker, the answer model, about 7 GB
 set "WANT="
-if not exist "models\bge-m3\config.json"              set "WANT=!WANT! bge-m3"
-if not exist "models\bge-reranker-v2-m3\config.json"  set "WANT=!WANT! reranker"
+call :model_ready "models\bge-m3"             || set "WANT=!WANT! bge-m3"
+call :model_ready "models\bge-reranker-v2-m3" || set "WANT=!WANT! reranker"
 if not exist "models\llm\%LLM_FILE%"                   set "WANT=!WANT! llm"
 if not defined WANT (
     echo       OK    already downloaded into models\, reusing them
@@ -325,6 +325,14 @@ if errorlevel 8 (
     exit /b 1
 )
 exit /b 0
+
+:model_ready
+rem %1 a model folder: whole once it has its config and its weights. A download cut
+rem short leaves the small files behind with no weights, which only fails at startup.
+if not exist "%~1\config.json" exit /b 1
+if exist "%~1\model.safetensors" exit /b 0
+if exist "%~1\pytorch_model.bin" exit /b 0
+exit /b 1
 
 :fetch_llama
 rem The llama-server build and the CUDA runtime it needs, two zips unpacked into
